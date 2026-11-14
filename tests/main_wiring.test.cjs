@@ -18,7 +18,7 @@ const electronStub = {
     once() {} loadFile() {} loadURL() {} show() {} isDestroyed() { return false; } isFocused() { return true; } flashFrame() {}
     static getAllWindows() { return [{}]; }
   },
-  dialog: { showOpenDialog: async () => ({ canceled: false, filePaths: [project] }) },
+  dialog: { showOpenDialog: async () => ({ canceled: false, filePaths: [project] }), showMessageBox: async () => ({ response: global.__commitChoice === undefined ? 0 : global.__commitChoice }) },
   ipcMain: { handle: (ch, fn) => handlers.set(ch, fn) },
   shell: { openExternal(url) { (global.__openedUrls = global.__openedUrls || []).push(url); }, openPath(p) { (global.__openedPaths = global.__openedPaths || []).push(p); return ''; }, showItemInFolder() {} },
   clipboard: { writeText() {}, readText: () => '' }
@@ -54,7 +54,7 @@ const jobUpdates = id => sent.filter(s => s.ch === 'studio:job' && s.payload.id 
 
 test('boots, registers every IPC channel, persists token/port for stable pairing', async () => {
   await boot();
-  for (const ch of ['studio:init', 'studio:choose-folder', 'studio:read-file', 'studio:write-file', 'studio:search', 'studio:prepare', 'studio:send', 'studio:import-reply', 'agent:state', 'agent:start', 'agent:reply', 'agent:retry', 'agent:rotate-next', 'agent:previous', 'agent:open-in-editor', 'agent:resume', 'agent:discard-previous', 'rules:get', 'rules:save', 'rules:save-skill', 'rules:delete-skill', 'rules:trust', 'rules:revoke', 'agent:attach', 'agent:detach', 'agent:cancel', 'agent:approve', 'agent:set-policy', 'agent:job-prompt', 'agent:checkpoints', 'agent:undo']) assert(handlers.has(ch), ch);
+  for (const ch of ['studio:init', 'studio:choose-folder', 'studio:read-file', 'studio:write-file', 'studio:search', 'studio:prepare', 'studio:send', 'studio:import-reply', 'agent:state', 'agent:start', 'agent:reply', 'agent:retry', 'agent:rotate-next', 'agent:previous', 'agent:open-in-editor', 'agent:resume', 'agent:discard-previous', 'git:status', 'git:diff', 'git:commit', 'rules:get', 'rules:save', 'rules:save-skill', 'rules:delete-skill', 'rules:trust', 'rules:revoke', 'agent:attach', 'agent:detach', 'agent:cancel', 'agent:approve', 'agent:set-policy', 'agent:job-prompt', 'agent:checkpoints', 'agent:undo']) assert(handlers.has(ch), ch);
   assert.match(bridgeInfo.token, /^[0-9a-f]{64}$/);
   const saved = JSON.parse(fs.readFileSync(path.join(userData, 'bridge-state.json'), 'utf8'));
   assert.equal(saved.token, bridgeInfo.token);
@@ -189,4 +189,46 @@ test('rules and attachment IPC: saving trusts the user\'s own text, the trust re
   const info = await invoke('studio:connection');
   assert.equal(info.protocol, 2);
   assert.equal('token' in info, false);
+});
+
+test('git over IPC: status/diff are read-only; a commit needs the native confirmation dialog and only includes the ticked paths', async () => {
+  const { execFileSync } = require('node:child_process');
+  try { execFileSync('git', ['--version'], { stdio: 'ignore' }); } catch { return; }   // sin git: bỏ qua
+  const G = (...a) => execFileSync('git', a, { cwd: project, encoding: 'utf8', windowsHide: true }).trim();
+  G('init', '-q'); G('config', 'user.name', 'T'); G('config', 'user.email', 't@e.c'); G('config', 'commit.gpgsign', 'false');
+  G('add', '-A'); G('commit', '-q', '-m', 'init');
+  const count = () => Number(G('rev-list', '--count', 'HEAD'));
+  fs.writeFileSync(path.join(project, 'src', 'app.ts'), 'export const answer = 1000;\n');
+  fs.writeFileSync(path.join(project, 'src', 'extra.ts'), 'export const extra = 1;\n');
+
+  const st = await invoke('git:status');
+  assert.equal(st.repo, true);
+  assert.deepEqual(st.files.map(f => f.path).sort(), ['src/app.ts', 'src/extra.ts']);
+  assert.match((await invoke('git:diff', 'src/app.ts', false)).diff, /\+export const answer = 1000;/);
+  await assert.rejects(async () => invoke('git:diff', '../../etc/passwd', false), /bị chặn/);
+
+  const shown = [];
+  let choice = 1;
+  electronStub.dialog.showMessageBox = async (_win, opts) => { shown.push(opts); return { response: choice }; };
+  try {
+    // invalid requests fail BEFORE any dialog is shown
+    await assert.rejects(async () => invoke('git:commit', { message: '', paths: ['src/app.ts'] }), /Thiếu thông điệp/);
+    await assert.rejects(async () => invoke('git:commit', { message: 'm', paths: ['nope.ts'] }), /không có thay đổi nào/);
+    await assert.rejects(async () => invoke('git:commit', null), /Thiếu thông điệp/);
+    assert.equal(shown.length, 0);
+    // người dùng bấm Huỷ trong hộp thoại hệ thống → không commit
+    await assert.rejects(async () => invoke('git:commit', { message: 'Đổi answer', paths: ['src/app.ts'] }), /Đã huỷ commit/);
+    assert.equal(shown.length, 1);
+    assert.match(shown[0].detail, /Đổi answer[\s\S]*src\/app\.ts \(sửa\)[\s\S]*Git hook: tắt · Studio không push/);
+    assert.ok(!shown[0].detail.includes('extra.ts'), 'unticked file is not part of the confirmation');
+    assert.equal(count(), 1);
+    // đồng ý → commit đúng một file
+    choice = 0;
+    const r = await invoke('git:commit', { message: 'Đổi answer', paths: ['src/app.ts'], hooks: 'yes-please' });
+    assert.equal(r.ok, true);
+    assert.equal(count(), 2);
+    assert.match(shown[1].detail, /Git hook: tắt/, 'only the boolean true enables hooks');
+    assert.deepEqual(G('show', '--name-only', '--format=', 'HEAD').split(/\r?\n/).filter(Boolean), ['src/app.ts']);
+    assert.deepEqual((await invoke('git:status')).files.map(f => f.path), ['src/extra.ts']);
+  } finally { electronStub.dialog.showMessageBox = async () => ({ response: 0 }); }
 });

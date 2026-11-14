@@ -27,6 +27,11 @@ contextBridge.exposeInMainWorld('studio', {
     ipcRenderer.on('studio:connection',listener);
     return () => ipcRenderer.removeListener('studio:connection',listener);
   },
+  git: {
+    status: () => invoke('git:status'),
+    diff: (path, staged) => invoke('git:diff', path, staged),
+    commit: req => invoke('git:commit', req)
+  },
   rules: {
     get: () => invoke('rules:get'),
     save: text => invoke('rules:save', text),

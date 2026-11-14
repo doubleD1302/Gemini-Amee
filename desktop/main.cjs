@@ -10,6 +10,7 @@ const { AgentRunner } = require('./agent.cjs');
 const { SessionStore } = require('./sessions.cjs');
 const { openInEditor } = require('./editor.cjs');
 const { RulesStore } = require('./project-rules.cjs');
+const git = require('./git.cjs');
 let bridge = null;
 let runner = null;
 let checkpoints = null;
@@ -181,6 +182,23 @@ app.whenReady().then(async () => {
   ipcMain.handle('rules:delete-skill', (_event, name) => rulesStore.deleteSkill(requireWorkspace(), String(name || '')));
   ipcMain.handle('rules:trust', (_event, hash) => rulesStore.trust(requireWorkspace(), String(hash || '')));
   ipcMain.handle('rules:revoke', () => rulesStore.revoke(requireWorkspace()));
+  // ----- Git: xem status/diff; commit cần xác nhận bằng hộp thoại hệ thống (không push) -----
+  ipcMain.handle('git:status', () => git.status(requireWorkspace()));
+  ipcMain.handle('git:diff', (_event, rel, staged) => git.diff(requireWorkspace(), { path: String(rel || ''), staged: !!staged }));
+  ipcMain.handle('git:commit', async (_event, req) => {
+    const root = requireWorkspace();
+    const r = req && typeof req === 'object' ? req : {};
+    const hooks = r.hooks === true;
+    const plan = await git.planCommit(root, { message: r.message, paths: Array.isArray(r.paths) ? r.paths.map(String) : [] });   // ném lỗi nếu không hợp lệ, chưa có tác dụng phụ
+    const list = plan.files.map(f => `${f.path} (${f.label})`);
+    const choice = await dialog.showMessageBox(mainWindow, {
+      type: 'question', buttons: ['Tạo commit', 'Huỷ'], defaultId: 1, cancelId: 1, noLink: true, title: 'Xác nhận commit git',
+      message: `Tạo commit trên nhánh "${plan.branch}"?`,
+      detail: [plan.message.split('\n')[0], '', ...list.slice(0, 20), list.length > 20 ? `… +${list.length - 20} file` : '', '', `Git hook: ${hooks ? 'BẬT (chạy mã của repo)' : 'tắt'} · Studio không push.`].filter((x, k, a) => !(x === '' && a[k - 1] === '')).join('\n')
+    });
+    if (!choice || choice.response !== 0) throw new Error('Đã huỷ commit.');
+    return git.commit(root, { message: r.message, paths: r.paths.map(String), hooks });
+  });
   // ----- Agent -----
   ipcMain.handle('agent:state', () => runner.snapshot());
   ipcMain.handle('agent:start', (_event, goal) => runner.start(goal));

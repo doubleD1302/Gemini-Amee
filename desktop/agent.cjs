@@ -474,7 +474,7 @@ class AgentRunner extends EventEmitter {
       if (halted && tool.kind !== 'read' && tool.kind !== 'control') { item.status = 'skipped'; item.output = 'Bỏ qua vì một bước trước đó trong cùng tin nhắn đã lỗi. Hãy xử lý lỗi rồi gửi lại.'; continue; }
       const ctx = { root, checkpoints: this.checkpoints, signal: this._abort.signal, source: 'agent' };
       let prep;
-      try { prep = tool.prepare(ctx, call.args); }
+      try { prep = await tool.prepare(ctx, call.args); }
       catch (err) {
         item.status = 'error'; item.output = err.message || String(err);
         if (call.tool !== 'plan') halted = true;   // kế hoạch sai định dạng chỉ là lỗi hiển thị, không chặn các thao tác khác (vẫn cần duyệt như thường)

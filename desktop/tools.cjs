@@ -12,6 +12,7 @@ const { spawn } = require('node:child_process');
 const workspace = require('./workspace.cjs');
 const { unifiedDiff, diffExtras } = require('./diff.cjs');
 const { parsePlanBody, MAX_ITEMS } = require('./plan.cjs');
+const git = require('./git.cjs');
 
 const READ_MAX_LINES = 400;
 const READ_MAX_CHARS = 24_000;
@@ -318,7 +319,52 @@ const plan = {
   async run(ctx, args) { const p = buildPlan(args); return { output: p.output, plan: p.items }; }
 };
 
-const TOOLS = { read_file, list_dir, grep, write_file, edit_file, run_command, plan, finish, ask_user };
+/* ---------- git (xem: status/diff tự chạy; commit LUÔN cần duyệt) ---------- */
+function commitPaths(args) {
+  return String(args.body || '').split('\n').map(s => s.trim()).filter(Boolean);
+}
+const git_status = {
+  name: 'git_status', kind: 'read',
+  description: 'Xem trạng thái git của dự án (nhánh, file đã đổi/mới/xoá). Chỉ đọc.',
+  usage: 'tool: git_status',
+  prepare() { return { label: 'git status' }; },
+  async run(ctx) {
+    const st = await git.status(ctx.root);
+    if (!st.repo) return { output: st.reason };
+    const head = `Nhánh: ${st.branch}${st.ahead ? ` · trước ${st.ahead}` : ''}${st.behind ? ` · sau ${st.behind}` : ''}${st.noCommits ? ' · chưa có commit nào' : ''}`;
+    if (!st.files.length) return { output: `${head}\nKhông có thay đổi (working tree sạch).` };
+    const lines = st.files.map(f => `- [${f.label}${f.staged ? ', đã staged' : ''}${f.unstaged ? ', chưa staged' : ''}${f.blocked ? ', BỊ CHẶN' : ''}] ${f.path}${f.origPath ? ` (từ ${f.origPath})` : ''}`);
+    return { output: `${head}\n${lines.join('\n')}${st.truncated ? '\n… (danh sách bị cắt)' : ''}` };
+  }
+};
+const git_diff = {
+  name: 'git_diff', kind: 'read',
+  description: 'Xem diff git của một file (hoặc toàn bộ nếu bỏ path). staged: true để xem phần đã staged. Chỉ đọc.',
+  usage: 'tool: git_diff\npath: src/a.ts      (tuỳ chọn)\nstaged: false       (tuỳ chọn)',
+  prepare(ctx, args) { return { label: `git diff ${normPath(args.path) || ''}`.trim() }; },
+  async run(ctx, args) {
+    const d = await git.diff(ctx.root, { path: normPath(args.path), staged: bool(args.staged) });
+    return { output: d.diff.trim() ? d.diff : 'Không có thay đổi để hiển thị.' };
+  }
+};
+const git_commit = {
+  name: 'git_commit', kind: 'exec',
+  description: 'Đề xuất tạo MỘT commit git gồm đúng các file liệt kê (mỗi dòng sau "---" là một đường dẫn có trong git status). LUÔN cần người dùng duyệt. Không push. Chỉ dùng khi người dùng yêu cầu commit; thông điệp một dòng.',
+  usage: 'tool: git_commit\nmessage: Sửa lỗi đăng nhập khi mật khẩu rỗng\n---\nsrc/auth.ts\ntests/auth.test.ts',
+  async prepare(ctx, args) {
+    const plan = await git.planCommit(ctx.root, { message: args.message, paths: commitPaths(args) });
+    const names = plan.files.map(f => `${f.path} (${f.label})`);
+    return {
+      label: `git commit: ${plan.message.split('\n')[0].slice(0, 100)}`,
+      summary: `${plan.files.length} file → nhánh ${plan.branch}: ${names.slice(0, 8).join(', ')}${names.length > 8 ? `, … +${names.length - 8}` : ''}. Git hook của repo tắt; không push.`
+    };
+  },
+  async run(ctx, args) {
+    const r = await git.commit(ctx.root, { message: args.message, paths: commitPaths(args), hooks: false });
+    return { output: `OK: đã commit ${r.hash} — ${r.summary} (${r.files} đường dẫn)`, exitCode: 0, ok: true };
+  }
+};
+const TOOLS = { read_file, list_dir, grep, write_file, edit_file, run_command, git_status, git_diff, git_commit, plan, finish, ask_user };
 const specs = () => Object.values(TOOLS).map(t => ({ name: t.name, description: t.description, usage: t.usage }));
 
 module.exports = { TOOLS, specs, bool, computeEdit, unifiedDiff };

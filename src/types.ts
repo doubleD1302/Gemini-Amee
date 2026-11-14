@@ -87,6 +87,13 @@ export interface AgentApi {
   undo(id: string, force?: boolean): Promise<CheckpointInfo>;
   onState(fn: (state: AgentState) => void): () => void;
 }
+export interface GitFile { path: string; origPath: string|null; xy: string; untracked: boolean; conflict: boolean; staged: boolean; unstaged: boolean; label: string; blocked: boolean; }
+export interface GitStatus { repo: boolean; reason?: string; branch: string; detached: boolean; ahead: number; behind: number; noCommits: boolean; files: GitFile[]; outside: number; truncated?: boolean; prefix?: string; }
+export interface GitApi {
+  status(): Promise<GitStatus>;
+  diff(path: string, staged?: boolean): Promise<{ path: string; untracked: boolean; diff: string }>;
+  commit(req: { message: string; paths: string[]; hooks?: boolean }): Promise<{ ok: boolean; hash: string; summary: string; output: string; files: number }>;
+}
 export interface ProjectSkill { name: string; file: string; description: string; text: string; }
 export interface ProjectRules {
   status: 'none'|'trusted'|'review'; rules: string; skills: ProjectSkill[]; warnings: string[]; hash: string;
@@ -117,6 +124,7 @@ export interface StudioApi {
   importReply(id:string,text:string):Promise<boolean>;
   agent: AgentApi;
   rules: RulesApi;
+  git: GitApi;
   onJob(fn:(job:Job)=>void):()=>void;
   onConnection(fn:(conn:BridgeConnection)=>void):()=>void;
   onFileWritten?(fn:(data:{path:string})=>void):()=>void;
