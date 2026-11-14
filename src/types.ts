@@ -50,9 +50,14 @@ export interface AgentContext {
   chars: number; tokens: number; budgetChars: number; budgetTokens: number; ratio: number;
   chatIndex: number; rotations: number; turnsInChat: number; rotateRequested: boolean;
 }
+export type AgentPlanStatus = 'pending'|'in_progress'|'done';
+export interface AgentPlanItem { text: string; status: AgentPlanStatus; }
+/** Kế hoạch do model xuất (tool `plan`): chỉ để hiển thị, văn bản mục là dữ liệu không tin cậy → render dạng text thuần. */
+export interface AgentPlan { items: AgentPlanItem[]; updatedAt: number; }
 export interface AgentState {
   id: string|null; goal: string; status: AgentStatus; turn: number; maxTurns: number;
   conversationUrl: string|null; jobId: string|null; liveText: string; error: string; question: string;
+  plan: AgentPlan|null;
   policy: { autoEdits: boolean };
   context: AgentContext;
   steps: AgentStep[]; pending: AgentPending[];

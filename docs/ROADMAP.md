@@ -11,7 +11,7 @@ Mỗi mục có tiêu chí nghiệm thu; thêm test cho mỗi mục.
 3. **[XONG] Quản lý ngữ cảnh dài.** Khi hội thoại Gemini dài, tóm tắt lịch sử bước (recap) và chuyển sang chat mới có chủ đích trước khi chạm giới hạn; hiển thị ước lượng ký tự/token đã dùng trong tab Agent. *Nghiệm thu:* test recap giữ nguyên mục tiêu + file đã sửa + việc còn lại.
 4. **[XONG] Phiên Agent lưu bền.** Lưu timeline/checkpoint theo project qua các lần mở app; nút "Tiếp tục phiên trước". *Nghiệm thu:* khởi động lại runner khôi phục state, các approval đang chờ bị đánh dấu hết hạn.
 5. **[XONG] Diff/preview tốt hơn.** Diff cạnh nhau, mở file ở editor tại dòng thay đổi, xem trước trước khi duyệt nhiều edit cùng file.
-6. **Kế hoạch (Plan) hiển thị.** Cho model xuất danh sách việc (tool `plan`) hiển thị dạng checklist trong tab Agent; không tự thực thi gì thêm.
+6. **[XONG] Kế hoạch (Plan) hiển thị.** Cho model xuất danh sách việc (tool `plan`) hiển thị dạng checklist trong tab Agent; không tự thực thi gì thêm.
 7. **Đính kèm ảnh/tệp** (ảnh chụp lỗi) qua extension — chỉ nếu DOM upload của Gemini ổn định; nếu không, ghi rõ giới hạn.
 8. Dọn: cập nhật `cap-nhat-extension.bat`/`update-installed.ps1` (tên installer 0.2.0), thêm kiểm tra phiên bản extension ↔ app trong tab Bridge.
 

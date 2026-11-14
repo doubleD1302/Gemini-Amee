@@ -1,15 +1,15 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Bot, Check, ExternalLink, ChevronDown, ChevronRight, ClipboardCopy, FilePen, FileSearch, History, LoaderCircle,
+  Bot, Check, Circle, CircleCheck, ExternalLink, ChevronDown, ChevronRight, ClipboardCopy, FilePen, FileSearch, History, ListChecks, LoaderCircle,
   Play, RotateCcw, ShieldAlert, ShieldCheck, Square, TerminalSquare, Undo2, X
 } from 'lucide-react';
-import type { AgentPending, AgentState, AgentStep, CheckpointInfo, DiffHunkView, PreviousSession } from '../types';
+import type { AgentPending, AgentPlan, AgentPlanStatus, AgentState, AgentStep, CheckpointInfo, DiffHunkView, PreviousSession } from '../types';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import './AgentPanel.css';
 
 const EMPTY: AgentState = {
   id: null, goal: '', status: 'idle', turn: 0, maxTurns: 25, conversationUrl: null, jobId: null,
-  liveText: '', error: '', question: '', policy: { autoEdits: false },
+  liveText: '', error: '', question: '', plan: null, policy: { autoEdits: false },
   context: { chars: 0, tokens: 0, budgetChars: 240000, budgetTokens: 68572, ratio: 0, chatIndex: 0, rotations: 0, turnsInChat: 0, rotateRequested: false },
   steps: [], pending: []
 };
@@ -30,6 +30,41 @@ function ContextMeterBar({ context: c, canRotate, onRotate }: { context: AgentSt
         </button>
       </div>
       <div className="agent-context-bar"><div className={`agent-context-fill ${level}`} style={{ width: `${Math.max(2, pct)}%` }} /></div>
+    </div>
+  );
+}
+
+const PLAN_STATUS_LABEL: Record<AgentPlanStatus, string> = { pending: 'chưa làm', in_progress: 'đang làm', done: 'xong' };
+
+/**
+ * Checklist kế hoạch do model lập (tool `plan`) — chỉ để xem, không có nút nào thực thi gì.
+ * Văn bản mục do model viết (không tin cậy) nên chỉ render bằng text thuần của React (không markdown/HTML).
+ */
+function PlanChecklist({ plan }: { plan: AgentPlan }) {
+  const [open, setOpen] = useState(true);
+  const total = plan.items.length;
+  const done = plan.items.filter(i => i.status === 'done').length;
+  return (
+    <div className="agent-plan" role="region" aria-label="Kế hoạch của agent">
+      <button className="agent-plan-head" onClick={() => setOpen(o => !o)} aria-expanded={open} title="Kế hoạch do Gemini lập; chỉ để hiển thị, không tự thực thi gì">
+        {open ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+        <ListChecks size={14} />
+        <strong>Kế hoạch</strong>
+        <span className="agent-plan-count">{done}/{total} xong</span>
+        <span className="agent-plan-bar" aria-hidden="true"><span className="agent-plan-fill" style={{ width: `${total ? Math.round((done / total) * 100) : 0}%` }} /></span>
+      </button>
+      {open && (
+        <ul className="agent-plan-list">
+          {plan.items.map((item, i) => (
+            <li key={i} className={`agent-plan-item ${item.status}`}>
+              <span className="agent-plan-icon" role="img" aria-label={PLAN_STATUS_LABEL[item.status]} title={PLAN_STATUS_LABEL[item.status]}>
+                {item.status === 'done' ? <CircleCheck size={14} /> : item.status === 'in_progress' ? <LoaderCircle size={14} className="agent-spin" /> : <Circle size={14} />}
+              </span>
+              <span className="agent-plan-text">{item.text}</span>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }
@@ -345,6 +380,7 @@ export function AgentPanel({ connected, workspaceOpen, onToast, onFilesChanged }
           onRotate={() => { void window.studio.agent.rotateNext().then(setState).catch(() => undefined); }}
         />
       )}
+      {hasRun && state.plan && state.plan.items.length > 0 && <PlanChecklist plan={state.plan} />}
       {state.policy.autoEdits && (
         <div className="agent-note"><ShieldCheck size={13} /> Sửa file tự áp dụng. Lệnh terminal vẫn luôn hỏi bạn.</div>
       )}
@@ -416,7 +452,7 @@ export function AgentPanel({ connected, workspaceOpen, onToast, onFilesChanged }
             />
             <div className="agent-row">
               <button className="agent-btn primary" disabled={busy || !reply.trim()} onClick={send}>Gửi</button>
-              <button className="agent-btn" disabled={busy} onClick={() => { void window.studio.agent.cancel().then(() => setState(s => ({ ...s, id: null, steps: [], status: 'idle' }))); }} title="Bắt đầu lại với mục tiêu mới">Phiên mới</button>
+              <button className="agent-btn" disabled={busy} onClick={() => { void window.studio.agent.cancel().then(() => setState(s => ({ ...s, id: null, steps: [], plan: null, status: 'idle' }))); }} title="Bắt đầu lại với mục tiêu mới">Phiên mới</button>
             </div>
           </>
         )}

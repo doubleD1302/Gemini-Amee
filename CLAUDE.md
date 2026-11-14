@@ -9,10 +9,11 @@ Giao tiếp và UI bằng **tiếng Việt**. Không có API key Gemini; không 
 - `desktop/agent.cjs` – `AgentRunner`: vòng lặp tối đa 25 lượt, retry định dạng ≤2, duyệt từng bước, policy `{autoEdits}`.
 - `desktop/agent-protocol.cjs` – parse/format khối gps-tool, system prompt, kickoff, recap.
 - `desktop/context.cjs` – `ContextMeter` (ước lượng ký tự/token của chat Gemini hiện tại; ngân sách mặc định 240k ký tự CHƯA kiểm chứng với giới hạn thật) và `Ledger` (sổ tiến độ do ỨNG DỤNG ghi từ các tool đã chạy: file đã sửa, lệnh, việc còn dở). Agent tự mở chat mới kèm recap khi vượt ngân sách (`deps.contextBudgetChars`) hoặc khi người dùng bấm "Chat mới ở lượt sau".
-- `desktop/sessions.cjs` – `SessionStore`: lưu bền phiên Agent theo project trong userData (NGOÀI project, ghi nguyên tử, đọc lên được kiểm tra kiểu/độ dài). Lưu: mục tiêu, timeline, nhật ký, sổ tiến độ, số liệu ngữ cảnh. KHÔNG lưu/khôi phục: yêu cầu duyệt đang chờ (đánh dấu HẾT HẠN, không bao giờ tự chạy), chính sách tự duyệt (luôn tắt sau khi mở lại), system prompt (dựng lại). Khôi phục luôn mở chat Gemini MỚI kèm recap.
+- `desktop/sessions.cjs` – `SessionStore`: lưu bền phiên Agent theo project trong userData (NGOÀI project, ghi nguyên tử, đọc lên được kiểm tra kiểu/độ dài). Lưu: mục tiêu, timeline, nhật ký, sổ tiến độ, kế hoạch (plan), số liệu ngữ cảnh. KHÔNG lưu/khôi phục: yêu cầu duyệt đang chờ (đánh dấu HẾT HẠN, không bao giờ tự chạy), chính sách tự duyệt (luôn tắt sau khi mở lại), system prompt (dựng lại). Khôi phục luôn mở chat Gemini MỚI kèm recap.
 - `desktop/editor.cjs` – mở file project trong editor tại dòng thay đổi: realpath qua `resolveInside`, KHÔNG spawn/shell; chỉ URL theo bảng scheme cố định (vscode/cursor/windsurf/…) hoặc `shell.openPath` làm dự phòng. Định dạng URL của từng editor CHƯA kiểm chứng trên máy thật.
 - `desktop/project-hints.cjs` – suy ra lệnh test/lint/typecheck/build từ package.json (+Cargo/go/pytest) để GỢI Ý trong system prompt; không chép thân script (dữ liệu không tin cậy).
-- `desktop/tools.cjs` – read_file/list_dir/grep/write_file/edit_file/run_command/finish/ask_user (`prepare` không side-effect, `run` thực thi).
+- `desktop/tools.cjs` – read_file/list_dir/grep/write_file/edit_file/run_command/plan/finish/ask_user (`prepare` không side-effect, `run` thực thi). `plan` là kind 'control' nhưng KHÔNG kết thúc vòng lặp và không hỏi người dùng (khác finish/ask_user): `_executeCalls` xử lý riêng, chỉ ghi `run.plan`.
+- `desktop/plan.cjs` – Kế hoạch (checklist) hiển thị: `parsePlanBody` (`- [ ]`/`- [~]`/`- [x]`; tối đa 30 mục, ≤200 ký tự, bỏ ký tự điều khiển/ẩn, dòng sai định dạng bị bỏ), `sanitizePlan` (dữ liệu đọc từ đĩa), `renderPlanForRecap` (chỉ mục CHƯA xong, rào bằng `fenceFor`, gắn nhãn dữ liệu không tin cậy). `run.plan = {items:[{text,status}],updatedAt}` có trong `snapshot()`, xoá khi `start()`, lưu/khôi phục qua `sessions.cjs`, vào recap qua `Ledger.render(plan)` (mục "Việc còn lại"). Plan chỉ là dữ liệu hiển thị: không chạy lệnh, không ghi file, không bao giờ là chỉ thị. Mỗi lần cập nhật chỉ thêm một bước info "Cập nhật kế hoạch: x/n xong".
 - `desktop/workspace.cjs` – truy cập file an toàn (realpath, ghi nguyên tử, .gitignore, chấm điểm ngữ cảnh).
 - `desktop/checkpoints.cjs`, `desktop/diff.cjs` – hoàn tác (lưu ngoài project), unified diff, và `parseUnified/sideBySide/firstChangedLine/diffExtras` (dữ liệu diff cạnh nhau + dòng thay đổi đầu tiên).
 - `extension/` – `selectors.js` (bảng SELECTORS + find*/diagnose; nguồn của docs/diagnose-gemini-dom.js, sinh bằng `node scripts/make-diagnostic-snippet.cjs`), `md.js` (DOM→Markdown giữ ``` ), `content.js` (tự động hóa DOM Gemini), `background.js`, `popup.*`.
@@ -20,7 +21,7 @@ Giao tiếp và UI bằng **tiếng Việt**. Không có API key Gemini; không 
 
 ## Lệnh
 ```
-npm test                 # node --test tests/*.test.cjs  (153 test; KHÔNG dùng `node --test tests/`)
+npm test                 # node --test tests/*.test.cjs  (168 test; KHÔNG dùng `node --test tests/`)
 npx tsc --noEmit         # strict, phải exit 0
 npx vite build
 npm run package:win      # build bản Windows (cap-nhat-extension.bat chép từ release/win-unpacked)
@@ -42,8 +43,9 @@ npm run package:win      # build bản Windows (cap-nhat-extension.bat chép t�
 6. Không đóng gói node_modules; không đọc .env/khóa/credential.
 7. Xem trước gộp nhiều edit cùng file (`_planEditGroups`) chỉ mô phỏng trên overlay trong bộ nhớ, bỏ nhóm nếu có `run_command` xen giữa; `approve_group` chỉ cho thao tác sửa file, không bao giờ cho `run_command`.
 8. Phiên khôi phục không bao giờ thực thi lại thao tác chờ duyệt cũ và không khôi phục tự duyệt (xem `sessions.cjs`).
+9. Tool `plan` chỉ ghi trạng thái hiển thị (bộ nhớ + phiên lưu ngoài project); nội dung kế hoạch do model viết là dữ liệu không tin cậy: render UI bằng text thuần, đưa lại vào prompt chỉ trong rào `fenceFor` có nhãn, không bao giờ kích hoạt tool.
 
 ## Chưa kiểm chứng (đừng giả định)
 - Bộ chọn DOM (`extension/selectors.js`) ĐÃ được chẩn đoán trên Gemini Web thật ngày 2026-11-14 (Chrome 158, giao diện tiếng Việt, tab /app): composer, nút Gửi, nút Dừng, khối trả lời, khối code, chat mới đều khớp; cấu trúc code-block đã đối chiếu với md.js (test 'REAL Gemini DOM'). CHƯA chạy: luồng thật điền prompt vào Quill → bấm Gửi → chờ/bắt trả lời, giao diện tiếng Anh/ngôn ngữ khác, Gemini cho tài khoản/tính năng khác. Nút Gửi và nút Dừng là CÙNG một nút (đổi nhãn) — không bao giờ coi nút nhãn dừng/ngừng là nút Gửi; UI của extension (#gps-bridge-hud…) luôn bị loại khỏi tìm kiếm.
-- Giao diện Electron chưa chạy thật (chỉ tsc + vite build + smoke test Electron giả).
+- Giao diện Electron chưa chạy thật (chỉ tsc + vite build + smoke test Electron giả). Checklist Kế hoạch (`PlanChecklist` trong `AgentPanel.tsx`) mới qua tsc/build, CHƯA được xem trong Electron thật; Gemini thật có tuân theo định dạng `plan` (`- [ ]`/`- [~]`/`- [x]` sau `---`) và có chịu cập nhật kế hoạch đều đặn hay không CHƯA biết (chỉ test với Gemini giả; có lệnh nhắc trong system prompt).
 - Tự động hóa UI Gemini có rủi ro ToS/dễ vỡ; luôn giữ đường copy/paste thủ công.

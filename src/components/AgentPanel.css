@@ -119,3 +119,18 @@
 .agent-sbs td.del { background: rgba(239,68,68,.16); }
 .agent-sbs td.add { background: rgba(16,185,129,.16); }
 .agent-sbs td.empty { background: rgba(148,163,184,.05); }
+
+/* Kế hoạch / checklist (mục 6) */
+.agent-plan { border-bottom: 1px solid var(--border, rgba(148,163,184,.15)); background: rgba(99,102,241,.05); }
+.agent-plan-head { display: flex; align-items: center; gap: 6px; width: 100%; padding: 7px 12px; background: none; border: 0; color: var(--text-main, #f1f5f9); cursor: pointer; font: inherit; text-align: left; }
+.agent-plan-count { color: var(--text-muted, #94a3b8); font-size: 11px; }
+.agent-plan-bar { flex: 1; min-width: 40px; height: 4px; border-radius: 2px; background: rgba(148,163,184,.18); overflow: hidden; }
+.agent-plan-fill { display: block; height: 100%; border-radius: 2px; background: #10b981; transition: width .3s ease; }
+.agent-plan-list { list-style: none; margin: 0; padding: 0 12px 8px; max-height: 190px; overflow-y: auto; display: flex; flex-direction: column; gap: 3px; }
+.agent-plan-item { display: flex; align-items: flex-start; gap: 7px; line-height: 1.45; color: var(--text-muted, #94a3b8); }
+.agent-plan-icon { display: inline-flex; flex: none; margin-top: 2px; color: var(--text-dim, #64748b); }
+.agent-plan-text { min-width: 0; word-break: break-word; white-space: pre-wrap; }
+.agent-plan-item.in_progress { color: var(--text-main, #f1f5f9); font-weight: 600; }
+.agent-plan-item.in_progress .agent-plan-icon { color: var(--accent-cyan, #38bdf8); }
+.agent-plan-item.done .agent-plan-icon { color: var(--accent-green, #10b981); }
+.agent-plan-item.done .agent-plan-text { text-decoration: line-through; opacity: .7; }

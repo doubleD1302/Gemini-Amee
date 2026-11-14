@@ -11,6 +11,7 @@ const path = require('node:path');
 const { spawn } = require('node:child_process');
 const workspace = require('./workspace.cjs');
 const { unifiedDiff, diffExtras } = require('./diff.cjs');
+const { parsePlanBody, MAX_ITEMS } = require('./plan.cjs');
 
 const READ_MAX_LINES = 400;
 const READ_MAX_CHARS = 24_000;
@@ -298,7 +299,26 @@ const ask_user = {
   async run(ctx, args) { return { output: String(args.question || args.body || '').trim() }; }
 };
 
-const TOOLS = { read_file, list_dir, grep, write_file, edit_file, run_command, finish, ask_user };
+/** Kế hoạch hiển thị: chỉ tính ra dữ liệu; vòng lặp agent lưu vào trạng thái. KHÔNG chạy gì, KHÔNG ghi file, KHÔNG cần duyệt. */
+function buildPlan(args) {
+  const body = typeof args.body === 'string' ? args.body : '';
+  const { items, ignored, overflow } = parsePlanBody(body);
+  if (!items.length) throw new Error('Kế hoạch trống hoặc sai định dạng; mỗi dòng bắt đầu bằng `- [ ]`, `- [~]` hoặc `- [x]` (đặt dòng "---" rồi danh sách ngay bên dưới).');
+  const done = items.filter(i => i.status === 'done').length;
+  const notes = [];
+  if (ignored) notes.push(`bỏ qua ${ignored} dòng sai định dạng`);
+  if (overflow) notes.push(`bỏ ${overflow} mục vượt giới hạn ${MAX_ITEMS} mục`);
+  return { items, done, output: `OK: đã lưu kế hoạch (${items.length} mục, ${done} xong)${notes.length ? ' · ' + notes.join('; ') : ''}` };
+}
+const plan = {
+  name: 'plan', kind: 'control',
+  description: 'Lập/cập nhật KẾ HOẠCH nhiều bước để hiển thị cho người dùng dạng checklist. Mỗi lần gọi THAY THẾ toàn bộ kế hoạch. Chỉ để hiển thị: không chạy gì, không cần duyệt, không kết thúc lượt làm việc và có thể đi cùng tool khác.',
+  usage: 'tool: plan\n---\n- [x] Đọc src/a.ts\n- [~] Sửa hàm foo\n- [ ] Chạy npm test\n([ ] chưa làm, [~] đang làm, [x] xong; tối đa 30 mục, mỗi mục ≤200 ký tự)',
+  prepare(ctx, args) { const p = buildPlan(args); return { label: 'plan', plan: p.items }; },
+  async run(ctx, args) { const p = buildPlan(args); return { output: p.output, plan: p.items }; }
+};
+
+const TOOLS = { read_file, list_dir, grep, write_file, edit_file, run_command, plan, finish, ask_user };
 const specs = () => Object.values(TOOLS).map(t => ({ name: t.name, description: t.description, usage: t.usage }));
 
 module.exports = { TOOLS, specs, bool, computeEdit, unifiedDiff };

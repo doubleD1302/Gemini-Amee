@@ -8,6 +8,7 @@
  * Lưu ý an toàn: đuôi output lệnh và ghi chú của model là DỮ LIỆU không tin cậy; khi đưa vào prompt luôn được rào và gắn nhãn.
  */
 const { clip, fenceFor } = require('./agent-protocol.cjs');
+const { renderPlanForRecap } = require('./plan.cjs');
 
 // Tiếng Việt + code: ~3.5 ký tự/token là ước lượng thô, thiên về an toàn (đếm nhiều hơn một chút).
 const CHARS_PER_TOKEN = 3.5;
@@ -116,9 +117,13 @@ class Ledger {
     return !this.changed.size && !this.read.length && !this.commands.length && !this.rejected.length && !this.userMessages.length && !this.lastNote;
   }
 
-  /** Văn bản đưa vào bản tóm tắt. Rỗng nếu chưa có gì. */
-  render() {
-    if (this.isEmpty()) return '';
+  /**
+   * Văn bản đưa vào bản tóm tắt. Rỗng nếu chưa có gì.
+   * @param plan kế hoạch hiện tại (run.plan, tuỳ chọn): các mục chưa xong được liệt kê dưới "Việc còn lại", có rào + nhãn dữ liệu không tin cậy.
+   */
+  render(plan) {
+    const planText = renderPlanForRecap(plan);
+    if (this.isEmpty() && !planText) return '';
     const out = [];
     if (this.changed.size) {
       out.push('### File đã sửa/tạo trong phiên này (ứng dụng ghi lại, đáng tin hơn trí nhớ của bạn)');
@@ -134,6 +139,7 @@ class Ledger {
     if (this.rejected.length) out.push('### Thao tác người dùng đã TỪ CHỐI (đừng lặp lại y nguyên)\n' + this.rejected.map(r => `- ${r}`).join('\n'));
 
     const todo = [];
+    if (planText) todo.push(planText);
     if (this.lastNote) todo.push(`- Ghi chú gần nhất của bạn trước khi chuyển chat (có thể nêu kế hoạch/bước tiếp theo): «${this.lastNote.replace(/\s+/g, ' ')}»`);
     for (const [cmd, tail] of this.failures) {
       const body = tail || '(không có output)';

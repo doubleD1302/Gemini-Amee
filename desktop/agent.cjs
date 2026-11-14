@@ -14,6 +14,7 @@ const protocol = require('./agent-protocol.cjs');
 const projectHints = require('./project-hints.cjs');
 const { ContextMeter, Ledger } = require('./context.cjs');
 const { unifiedDiff, diffExtras } = require('./diff.cjs');
+const { countDone } = require('./plan.cjs');
 
 const MAX_STEPS_KEPT = 200;
 const CONVERSATION_RE = /^https:\/\/gemini\.google\.com\/(?:u\/\d+\/)?app\/[A-Za-z0-9_-]+/;
@@ -60,7 +61,7 @@ class AgentRunner extends EventEmitter {
   }
 
   _resetRun() {
-    this.run = { id: null, goal: '', status: 'idle', turn: 0, conversationUrl: null, jobId: null, liveText: '', error: '', question: '' };
+    this.run = { id: null, goal: '', status: 'idle', turn: 0, conversationUrl: null, jobId: null, liveText: '', error: '', question: '', plan: null };
     this._running = false;
     this._cancelled = false;
     this._waiter = null;
@@ -73,6 +74,7 @@ class AgentRunner extends EventEmitter {
   snapshot() {
     return {
       ...this.run,
+      plan: this.run.plan ? { items: this.run.plan.items.map(i => ({ ...i })), updatedAt: this.run.plan.updatedAt } : null,
       maxTurns: this.maxTurns,
       policy: { ...this.policy },
       context: this.meter.snapshot(),
@@ -147,7 +149,7 @@ class AgentRunner extends EventEmitter {
   _buildRecap(followUp, reason) {
     return protocol.buildRecap({
       systemPrompt: this._systemPrompt, goal: this.run.goal, steps: this._digest,
-      ledgerText: this.ledger.render(), followUp, maxFollowUp: 24000, reason
+      ledgerText: this.ledger.render(this.run.plan), followUp, maxFollowUp: 24000, reason
     });
   }
   _makeSystemPrompt(root) {
@@ -171,6 +173,7 @@ class AgentRunner extends EventEmitter {
     return {
       savedAt: Date.now(),
       run: { id: this.run.id, goal: this.run.goal, status: this.run.status, turn: this.run.turn, conversationUrl: this.run.conversationUrl, error: this.run.error, question: this.run.question },
+      plan: this.run.plan,
       steps: this.steps.slice(-MAX_STEPS_KEPT).map(({ view, ...rest }) => rest),
       digest: this._digest.slice(-60),
       meter: { chars: this.meter.chars, turns: this.meter.turns, chatIndex: this.meter.chatIndex, rotations: this.meter.rotations },
@@ -237,7 +240,7 @@ class AgentRunner extends EventEmitter {
     this._digest = saved.digest.slice();
     this.ledger.load(saved.ledger);
     this.meter.restore(saved.meter);
-    Object.assign(this.run, { id: saved.run.id, goal: saved.run.goal, turn: 0, conversationUrl: null, error: '', question: '' });
+    Object.assign(this.run, { id: saved.run.id, goal: saved.run.goal, turn: 0, conversationUrl: null, error: '', question: '', plan: saved.plan || null });
     this._rotateReason = 'ứng dụng được mở lại';
     this.meter.rotateRequested = true;
 
@@ -432,12 +435,24 @@ class AgentRunner extends EventEmitter {
       let prep;
       try { prep = tool.prepare(ctx, call.args); }
       catch (err) {
-        item.status = 'error'; item.output = err.message || String(err); halted = true;
+        item.status = 'error'; item.output = err.message || String(err);
+        if (call.tool !== 'plan') halted = true;   // kế hoạch sai định dạng chỉ là lỗi hiển thị, không chặn các thao tác khác (vẫn cần duyệt như thường)
         this.pushStep({ type: 'tool', tool: call.tool, status: 'error', label: '', text: item.output });
         this._digest.push(`${call.tool} → lỗi: ${clip(item.output, 120)}`);
         continue;
       }
       item.label = prep.label || '';
+
+      // Kế hoạch: CHỈ ghi vào trạng thái trong bộ nhớ (+ phiên lưu); không chạy gì, không ghi file, không cần duyệt, không kết thúc vòng lặp.
+      if (call.tool === 'plan') {
+        const res = await tool.run(ctx, call.args);
+        this.run.plan = { items: res.plan, updatedAt: Date.now() };
+        const done = countDone(this.run.plan);
+        item.output = res.output;
+        this._digest.push(`plan → ${done}/${res.plan.length} xong`);
+        this.pushStep({ type: 'info', text: `Cập nhật kế hoạch: ${done}/${res.plan.length} xong` });
+        continue;
+      }
       const step = this.pushStep({ type: 'tool', tool: call.tool, label: item.label, summary: prep.summary || '', diff: prep.diff || '', view: prep.view, line: prep.line, status: 'running' });
       const updateStep = patch => { Object.assign(step, patch); this.emitState(); };
 

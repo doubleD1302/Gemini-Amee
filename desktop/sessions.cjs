@@ -11,6 +11,7 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const { clip } = require('./agent-protocol.cjs');
 const { diffExtras } = require('./diff.cjs');
+const { sanitizePlan } = require('./plan.cjs');
 
 const VERSION = 1;
 const MAX_STEPS = 400;
@@ -55,6 +56,7 @@ function sanitizeSession(raw) {
       conversationUrl: typeof run.conversationUrl === 'string' ? str(run.conversationUrl, 300) : null,
       error: str(run.error, 1000), question: str(run.question, 2000)
     },
+    plan: sanitizePlan(raw.plan),   // dữ liệu hiển thị thuần; chuẩn hoá lại từng mục, không tin file đĩa
     steps: arr(raw.steps).slice(-MAX_STEPS).map(sanitizeStep).filter(Boolean),
     digest: strs(raw.digest, 80, 300),
     meter: {

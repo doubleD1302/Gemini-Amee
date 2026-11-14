@@ -107,5 +107,5 @@ test('run_command captures output/exit code, times out, and can be aborted',asyn
   assert.throws(()=>TOOLS.run_command.prepare(ctx,{}),/command/);
 });
 test('tool kinds: only reads auto-run; edits and commands require approval',()=>{
-  assert.deepEqual(Object.fromEntries(Object.values(TOOLS).map(t=>[t.name,t.kind])),{read_file:'read',list_dir:'read',grep:'read',write_file:'edit',edit_file:'edit',run_command:'exec',finish:'control',ask_user:'control'});
+  assert.deepEqual(Object.fromEntries(Object.values(TOOLS).map(t=>[t.name,t.kind])),{read_file:'read',list_dir:'read',grep:'read',write_file:'edit',edit_file:'edit',run_command:'exec',plan:'control',finish:'control',ask_user:'control'});
 });
