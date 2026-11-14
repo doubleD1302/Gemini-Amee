@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Gemini Project Studio Bridge",
   "description": "Cầu nối dự án mã nguồn an toàn giữa Gemini Project Studio và Gemini Web (Tương thích hoàn hảo cả Google Chrome và Microsoft Edge).",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "permissions": [
     "storage"
   ],

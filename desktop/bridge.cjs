@@ -5,7 +5,10 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const { EventEmitter } = require('node:events');
 
-const VERSION = '0.2.0';
+const VERSION = '0.2.0';   // phải khớp package.json (có test)
+// Số giao thức giữa Studio ↔ extension; tăng khi hợp đồng đổi (2: có tệp đính kèm trong job). Extension gửi kèm header mỗi lần gọi.
+const PROTOCOL = 2;
+const VERSION_RE = /^[0-9A-Za-z.+-]{1,24}$/;
 const DEFAULT_PORT = 47821;
 const TERMINAL = new Set(['final', 'error', 'cancelled']);
 
@@ -38,6 +41,7 @@ class Bridge extends EventEmitter {
     this.port = null;
     this.server = null;
     this.timer = null;
+    this.extension = null;   // { version, protocol, seenAt } lần gần nhất extension tự báo; null = chưa thấy lần nào
     this.onProposeWrite = null;
     this.onGetWorkspace = null;
   }
@@ -66,7 +70,18 @@ class Bridge extends EventEmitter {
     await new Promise(resolve => this.server.close(resolve));
     this.server = null;
   }
-  info() { return { url: `http://127.0.0.1:${this.port}`, connected: Date.now() - this.lastSeen < 12000, token: this.token }; }
+  /** So khớp phiên bản/giao thức extension: 'unknown' (chưa thấy), 'ok', 'outdated' (extension cũ), 'newer' (Studio cũ hơn extension). */
+  extensionStatus() {
+    if (!this.extension) return { status: 'unknown', version: '', protocol: 0 };
+    const { version, protocol } = this.extension;
+    return { status: protocol === PROTOCOL ? 'ok' : protocol < PROTOCOL ? 'outdated' : 'newer', version, protocol };
+  }
+  noteExtension(headers) {
+    const v = String(headers['x-gps-extension-version'] || '');
+    const p = parseInt(String(headers['x-gps-protocol'] || ''), 10);
+    this.extension = { version: VERSION_RE.test(v) ? v : '', protocol: Number.isInteger(p) && p > 0 && p < 1000 ? p : 0, seenAt: Date.now() };
+  }
+  info() { return { url: `http://127.0.0.1:${this.port}`, connected: Date.now() - this.lastSeen < 12000, token: this.token, appVersion: VERSION, protocol: PROTOCOL, extension: this.extensionStatus() }; }
 
   // Không bao giờ phát dữ liệu ảnh (base64) ra ngoài bridge/giao diện: chỉ số lượng.
   publicJob(job) { return { ...job, prompt: undefined, attachments: undefined, attachmentCount: (job.attachments || []).length }; }
@@ -149,9 +164,11 @@ class Bridge extends EventEmitter {
       const ok = given.length === want.length && crypto.timingSafeEqual(Buffer.from(given), Buffer.from(want));
       if (!ok) return this.json(res, 401, { error: 'Invalid bridge token' });
       const route = new URL(req.url, 'http://127.0.0.1').pathname;
+      // Extension tự khai phiên bản/giao thức; extension cũ không gửi header → protocol 0 → 'outdated'.
+      if (route === '/v1/health' || route === '/v1/next' || req.headers['x-gps-extension-version']) this.noteExtension(req.headers);
       if (req.method === 'GET' && route === '/v1/health') {
         this.lastSeen = Date.now();
-        return this.json(res, 200, { ok: true, app: 'Gemini Project Studio', version: VERSION });
+        return this.json(res, 200, { ok: true, app: 'Gemini Project Studio', version: VERSION, protocol: PROTOCOL });
       }
       if (req.method === 'GET' && route === '/v1/next') {
         this.lastSeen = Date.now();
@@ -202,4 +219,4 @@ class Bridge extends EventEmitter {
     }
   }
 }
-module.exports = { Bridge, loadOrCreateState, VERSION, DEFAULT_PORT };
+module.exports = { Bridge, loadOrCreateState, VERSION, PROTOCOL, DEFAULT_PORT };

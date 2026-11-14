@@ -13,7 +13,7 @@ Mỗi mục có tiêu chí nghiệm thu; thêm test cho mỗi mục.
 5. **[XONG] Diff/preview tốt hơn.** Diff cạnh nhau, mở file ở editor tại dòng thay đổi, xem trước trước khi duyệt nhiều edit cùng file.
 6. **[XONG] Kế hoạch (Plan) hiển thị.** Cho model xuất danh sách việc (tool `plan`) hiển thị dạng checklist trong tab Agent; không tự thực thi gì thêm.
 7. **[XONG phần Studio/bridge/UI; upload DOM Gemini CHƯA kiểm chứng] Đính kèm ảnh/tệp** (ảnh chụp lỗi) qua extension — chỉ nếu DOM upload của Gemini ổn định; nếu không, ghi rõ giới hạn.
-8. Dọn: cập nhật `cap-nhat-extension.bat`/`update-installed.ps1` (tên installer 0.2.0), thêm kiểm tra phiên bản extension ↔ app trong tab Bridge.
+8. **[XONG]** Dọn: cập nhật `cap-nhat-extension.bat`/`update-installed.ps1` (tên installer 0.2.0), thêm kiểm tra phiên bản extension ↔ app trong tab Bridge.
 
 ## Giai đoạn 3 — Gần Antigravity hơn
 1. **Nhiều agent/phiên song song** (mỗi phiên một chat Gemini, hàng đợi bridge theo `sessionId`).

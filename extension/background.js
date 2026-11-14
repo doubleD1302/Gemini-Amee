@@ -8,11 +8,13 @@ async function getPairing() {
   if (!/^[0-9a-f]{64}$/i.test(pairing.token)) throw new Error('Bridge token không hợp lệ');
   return { base: url.origin, token: pairing.token };
 }
+// Số giao thức khớp bridge.cjs (PROTOCOL). Studio dùng để cảnh báo extension cũ ở tab Bridge.
+const GPS_PROTOCOL = 2;
 async function request(endpoint, method='GET', body) {
   const { base, token } = await getPairing();
   const response = await fetch(base+endpoint, {
     method,
-    headers: {'Authorization': `Bearer ${token}`, 'Content-Type':'application/json'},
+    headers: {'Authorization': `Bearer ${token}`, 'Content-Type':'application/json', 'X-GPS-Extension-Version': chrome.runtime.getManifest().version, 'X-GPS-Protocol': String(GPS_PROTOCOL)},
     ...(body===undefined ? {} : { body: JSON.stringify(body) }),
     cache:'no-store',
     signal:AbortSignal.timeout(7000)
@@ -32,7 +34,7 @@ chrome.runtime.onMessage.addListener((message,sender,sendResponse) => {
   (async()=>{
     try {
       if (message.type==='GPS_POLL') return {data: await request('/v1/next')};
-      if (message.type==='GPS_PING') return {data: await request('/v1/health')};
+      if (message.type==='GPS_PING') return {data: {...(await request('/v1/health')), extensionVersion: chrome.runtime.getManifest().version, extensionProtocol: GPS_PROTOCOL}};
       if (message.type==='GPS_GET_WORKSPACE') return {data: await request('/v1/workspace')};
       if (message.type==='GPS_WRITE_FILE') {
         if (typeof message.path!=='string'||typeof message.content!=='string') throw new Error('Invalid file write payload');

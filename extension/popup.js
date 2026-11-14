@@ -29,7 +29,14 @@ async function checkConnection() {
   try {
     const result = await chrome.runtime.sendMessage({ type: 'GPS_PING' });
     if (result?.error) throw new Error(result.error);
-    updateStatus('✓ Đã kết nối với Gemini Project Studio! Giữ tab Gemini Web mở để bắt đầu hỏi.', 'success');
+    const d = result?.data || {};
+    if (d.protocol && d.extensionProtocol && d.protocol > d.extensionProtocol) {
+      updateStatus('Đã kết nối nhưng extension (v' + d.extensionVersion + ') CŨ hơn Studio (v' + d.version + '). Chạy cap-nhat-extension.bat hoặc chép lại thư mục extension, rồi bấm Reload ở chrome://extensions.', 'error');
+    } else if (d.protocol && d.extensionProtocol && d.protocol < d.extensionProtocol) {
+      updateStatus('Đã kết nối nhưng Studio (v' + d.version + ') CŨ hơn extension (v' + d.extensionVersion + '). Hãy cập nhật ứng dụng Studio.', 'error');
+    } else {
+      updateStatus('✓ Đã kết nối với Gemini Project Studio' + (d.version ? ' v' + d.version : '') + '! Giữ tab Gemini Web mở để bắt đầu hỏi.', 'success');
+    }
   } catch (err) {
     updateStatus('Chưa kết nối: ' + String(err.message || err), 'error');
   }

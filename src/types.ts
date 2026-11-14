@@ -1,6 +1,7 @@
 export interface ProjectFile { path:string; name:string; size:number; }
 export interface WorkspaceInfo { name:string; root:string; files:ProjectFile[]; skipped:number; truncated:boolean; }
-export interface BridgeConnection { url:string; connected:boolean; }
+export interface ExtensionCompat { status:'unknown'|'ok'|'outdated'|'newer'; version:string; protocol:number; }
+export interface BridgeConnection { url:string; connected:boolean; appVersion?:string; protocol?:number; extension?:ExtensionCompat; }
 export interface Prepared { prompt:string; included:string[]; totalFiles:number; truncated:boolean; characters:number; }
 export interface SearchMatch { path:string; line:number; snippet:string; }
 export type JobStatus = 'queued'|'dispatched'|'sent'|'streaming'|'final'|'error'|'cancelled';

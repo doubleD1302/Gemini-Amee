@@ -1580,7 +1580,14 @@ Bạn là một AI Vibe Coding siêu hạng. Nhiệm vụ của bạn là trực
                   <span className={'connection-dot ' + (connected ? 'online' : '')} />
                   <strong>{connected ? 'Đã kết nối thành công' : 'Chưa kết nối Extension'}</strong>
                 </div>
-                <small>{connection.url}</small>
+                <small>{connection.url}{connection.appVersion ? ` · Studio v${connection.appVersion}` : ''}</small>
+                {connection.extension && connection.extension.status !== 'unknown' && (
+                  <small className={'bridge-compat ' + connection.extension.status} role="status">
+                    {connection.extension.status === 'ok' && `Extension khớp phiên bản (v${connection.extension.version}, giao thức ${connection.extension.protocol}) ✓`}
+                    {connection.extension.status === 'outdated' && `Extension CŨ${connection.extension.version ? ` (v${connection.extension.version})` : ' (chưa báo phiên bản)'}: chạy cap-nhat-extension.bat hoặc chép lại thư mục Extension rồi bấm Reload ở trang extensions của trình duyệt.`}
+                    {connection.extension.status === 'newer' && `Extension mới hơn Studio (v${connection.extension.version}): hãy cập nhật ứng dụng Studio.`}
+                  </small>
+                )}
               </div>
 
               <div className="bridge-steps">

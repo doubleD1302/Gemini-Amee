@@ -5077,3 +5077,8 @@ button:disabled {
   padding: 1px 5px;
   border-radius: 4px;
 }
+
+/* Phiên bản extension ↔ Studio (tab Bridge) */
+.bridge-compat { display: block; margin-top: 4px; line-height: 1.45; }
+.bridge-compat.ok { color: #10b981; }
+.bridge-compat.outdated, .bridge-compat.newer { color: #f59e0b; }

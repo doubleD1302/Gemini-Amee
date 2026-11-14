@@ -20,8 +20,8 @@ const chatJobs = new Map();       // jobId -> { question, activePath, retried }
 const CONV_RE = /^https:\/\/gemini\.google\.com\/(?:u\/\d+\/)?app\/[A-Za-z0-9_-]+/;
 
 function publicBridgeInfo() {
-  const { url, connected } = bridge.info();
-  return { url, connected };
+  const { url, connected, appVersion, protocol, extension } = bridge.info();
+  return { url, connected, appVersion, protocol, extension };
 }
 function toUI(index) {
   return { name:index.name, root:index.root, files:index.files, skipped:index.skipped, truncated:index.truncated };
