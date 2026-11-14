@@ -184,6 +184,8 @@ app.whenReady().then(async () => {
   });
   ipcMain.handle('agent:resume', (_event, opts) => runner.resume({ continueRun: !(opts && opts.continueRun === false) }));
   ipcMain.handle('agent:discard-previous', () => runner.discardPrevious());
+  ipcMain.handle('agent:attach', (_event, name, base64) => runner.attach(String(name || ''), String(base64 || '')));
+  ipcMain.handle('agent:detach', (_event, id) => runner.detach(String(id)));
   ipcMain.handle('agent:cancel', () => runner.cancel());
   ipcMain.handle('agent:approve', (_event, id, decision, reason) => runner.approve(String(id), String(decision), String(reason || '')));
   ipcMain.handle('agent:set-policy', (_event, policy) => runner.setPolicy(policy));

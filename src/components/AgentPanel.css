@@ -134,3 +134,13 @@
 .agent-plan-item.in_progress .agent-plan-icon { color: var(--accent-cyan, #38bdf8); }
 .agent-plan-item.done .agent-plan-icon { color: var(--accent-green, #10b981); }
 .agent-plan-item.done .agent-plan-text { text-decoration: line-through; opacity: .7; }
+
+/* Đính kèm ảnh/tệp (mục 7) */
+.agent-attach { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.agent-attach-btn { margin-left: 0; display: inline-flex; align-items: center; gap: 4px; }
+.agent-chip { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; padding: 2px 4px 2px 8px; border-radius: 999px; border: 1px solid var(--border, rgba(148,163,184,.25)); background: rgba(99,102,241,.1); font-size: 11px; }
+.agent-chip.image { border-color: rgba(168,85,247,.4); }
+.agent-chip-name { max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.agent-chip-meta { color: var(--text-dim, #64748b); }
+.agent-chip button { display: inline-flex; background: none; border: 0; padding: 2px; color: var(--text-muted, #94a3b8); cursor: pointer; border-radius: 50%; }
+.agent-chip button:hover { color: var(--accent-red, #ef4444); }

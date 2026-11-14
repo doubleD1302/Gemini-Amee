@@ -37,6 +37,8 @@ contextBridge.exposeInMainWorld('studio', {
     openInEditor: (rel, line, editor) => invoke('agent:open-in-editor', rel, line, editor),
     resume: opts => invoke('agent:resume', opts),
     discardPrevious: () => invoke('agent:discard-previous'),
+    attach: (name, base64) => invoke('agent:attach', name, base64),
+    detach: id => invoke('agent:detach', id),
     cancel: () => invoke('agent:cancel'),
     approve: (id, decision, reason) => invoke('agent:approve', id, decision, reason),
     setPolicy: policy => invoke('agent:set-policy', policy),

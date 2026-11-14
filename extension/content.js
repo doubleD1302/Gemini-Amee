@@ -260,6 +260,49 @@
     return composer;
   }
 
+  // ---- Đính kèm ảnh (Giai đoạn 2, mục 7) — CHƯA kiểm chứng trên Gemini thật ----
+  // Thử lần lượt: dán (paste) vào ô nhập → thả (drop) → <input type=file>. Thành công = số "xem trước tệp" tăng lên.
+  // Không xác nhận được thì báo lỗi code 'attachment_failed' (Studio sẽ hướng dẫn gửi chỉ chữ hoặc đính kèm thủ công);
+  // KHÔNG bao giờ lặng lẽ gửi tin nhắn thiếu ảnh.
+  function b64ToFile(a) {
+    const bin = atob(String(a.data || ''));
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return new File([bytes], String(a.name || 'image.png'), { type: String(a.mime || 'image/png') });
+  }
+  async function previewsIncreased(before, ms) {
+    const start = Date.now();
+    while (Date.now() - start < ms) {
+      if (S.countAttachmentPreviews(document) > before) return true;
+      await new Promise(r => setTimeout(r, 200));
+    }
+    return false;
+  }
+  async function attachImages(list, composer) {
+    const files = list.slice(0, 3).map(b64ToFile);
+    const before = S.countAttachmentPreviews(document);
+    const dt = new DataTransfer();
+    files.forEach(f => dt.items.add(f));
+    const attempts = [
+      () => { composer.focus(); composer.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: dt })); },
+      () => { composer.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: dt })); },
+      () => {
+        const input = S.findFileInputs(document)[0];
+        if (!input) return;
+        input.files = dt.files;
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+    ];
+    for (const attempt of attempts) {
+      try { attempt(); } catch (_) { continue; }
+      if (await previewsIncreased(before, 5000)) return true;
+    }
+    const err = new Error('Không đính kèm được ảnh vào Gemini (không thấy ảnh xem trước sau khi dán/thả/chọn tệp). Gửi chỉ phần chữ hoặc đính kèm ảnh thủ công trong tab Gemini.');
+    err.code = 'attachment_failed';
+    throw err;
+  }
+
   async function report(status, text, extra = {}) {
     if (!active) return;
     const result = await api({ type: 'GPS_REPORT', id: active.id, status, text, conversationUrl: conversationUrlNow(), ...extra });
@@ -289,9 +332,14 @@
       lastText = '';
       lastTextChangedAt = Date.now();
       const composer = insertPrompt(job.prompt);
+      const hasImages = Array.isArray(job.attachments) && job.attachments.length > 0;
+      if (hasImages) {
+        setBadge('Đang đính kèm ảnh…', 'working');
+        await attachImages(job.attachments, composer);
+      }
 
-      // Wait for Send button to appear and enable (handles large prompts up to 6 seconds)
-      const button = await waitForSendButton(6000);
+      // Wait for Send button to appear and enable (handles large prompts up to 6 seconds; ảnh cần thời gian tải lên)
+      const button = await waitForSendButton(hasImages ? 15000 : 6000);
       let sent = false;
 
       if (button && !isButtonDisabled(button)) {
@@ -321,7 +369,7 @@
         setBadge('Đang đợi Gemini trả lời…', 'working');
       }
     } catch (err) {
-      await report('error', String(err.message || err)).catch(() => {});
+      await report('error', String(err.message || err), err && err.code ? { code: String(err.code).slice(0, 40) } : {}).catch(() => {});
       setBadge('Không gửi được · kiểm tra Gemini tab', 'error');
       active = null;
     }

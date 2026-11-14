@@ -86,7 +86,20 @@
       'a[href="/app"]',
       'a[href$="/app"]'
     ],
-    codeBlock: ['model-response pre', '.model-response-text pre', 'message-content pre', 'code-block']
+    codeBlock: ['model-response pre', '.model-response-text pre', 'message-content pre', 'code-block'],
+    // Đính kèm ảnh (Giai đoạn 2, mục 7). TOÀN BỘ ứng viên dưới đây là PHỎNG ĐOÁN, chưa kiểm chứng trên Gemini thật.
+    // Xem trước tệp đã đính kèm trong vùng soạn tin (dùng để xác nhận upload thành công bằng cách đếm).
+    attachmentPreview: [
+      'uploader-file-preview',
+      'uploader-file-preview-container [data-test-id*="preview"]',
+      '[data-test-id*="file-preview"]',
+      '[data-test-id*="image-preview"]',
+      '.file-preview-container [role="listitem"]',
+      '.attachment-preview',
+      '[class*="file-preview"]',
+      '[class*="image-preview"]'
+    ],
+    fileInput: ['input[type="file"]']
   };
 
   // Mô tả từng mục để HUD giải thích khi không tìm thấy.
@@ -175,6 +188,26 @@
   function findCodeBlocks(doc) {
     const hit = findFirst(doc, SELECTORS.codeBlock, { requireVisible: false });
     return hit ? { els: safeAll(doc, hit.selector).list, selector: hit.selector, index: hit.index } : { els: [], selector: '', index: -1 };
+  }
+
+  /**
+   * Số xem trước tệp đính kèm đang có trong vùng soạn tin (0 nếu không thấy). Chỉ dùng ứng viên khớp ĐẦU TIÊN
+   * để không đếm đôi (một xem trước thường khớp nhiều selector lồng nhau). Không tính UI của extension.
+   */
+  function countAttachmentPreviews(doc, opts = {}) {
+    const scope = opts.scope || doc;
+    for (const sel of SELECTORS.attachmentPreview) {
+      const list = safeAll(scope, sel).list.filter(e => !isOwnUi(e));
+      if (list.length) return list.length;
+    }
+    return 0;
+  }
+
+  /** Các <input type=file> trong trang (thường bị ẩn; không yêu cầu hiển thị). */
+  function findFileInputs(doc) {
+    const out = [];
+    for (const sel of SELECTORS.fileInput) for (const e of safeAll(doc, sel).list) if (!isOwnUi(e) && !out.includes(e)) out.push(e);
+    return out;
   }
 
   function isIconSend(icon) {
@@ -398,7 +431,7 @@
     };
   }
 
-  const api = { SELECTORS, TARGETS, findFirst, findComposer, findResponses, findResponseContent, findStopButton, findNewChat, findCodeBlocks, findSendButton, diagnose, formatReport, collectHints, collectResponseSkeleton, skeletonOf, isOwnUi, isStopLike, defaultVisible };
+  const api = { SELECTORS, TARGETS, findFirst, findComposer, findResponses, findResponseContent, findStopButton, findNewChat, findCodeBlocks, findSendButton, countAttachmentPreviews, findFileInputs, diagnose, formatReport, collectHints, collectResponseSkeleton, skeletonOf, isOwnUi, isStopLike, defaultVisible };
   root.__gpsSelectors = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

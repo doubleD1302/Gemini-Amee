@@ -15,6 +15,7 @@ const projectHints = require('./project-hints.cjs');
 const { ContextMeter, Ledger } = require('./context.cjs');
 const { unifiedDiff, diffExtras } = require('./diff.cjs');
 const { countDone } = require('./plan.cjs');
+const attachmentsLib = require('./attachments.cjs');
 
 const MAX_STEPS_KEPT = 200;
 const CONVERSATION_RE = /^https:\/\/gemini\.google\.com\/(?:u\/\d+\/)?app\/[A-Za-z0-9_-]+/;
@@ -46,6 +47,7 @@ class AgentRunner extends EventEmitter {
     this.ledger = new Ledger();
     this.steps = [];
     this.pending = [];
+    this.attachments = [];   // tệp đính kèm chờ gửi ở tin nhắn kế tiếp (chỉ trong bộ nhớ, không lưu bền)
     this._digest = [];
     this._resetRun();
     this._lastEmit = 0;
@@ -74,6 +76,7 @@ class AgentRunner extends EventEmitter {
   snapshot() {
     return {
       ...this.run,
+      attachments: this.attachments.map(attachmentsLib.publicInfo),
       plan: this.run.plan ? { items: this.run.plan.items.map(i => ({ ...i })), updatedAt: this.run.plan.updatedAt } : null,
       maxTurns: this.maxTurns,
       policy: { ...this.policy },
@@ -130,11 +133,11 @@ class AgentRunner extends EventEmitter {
     if (existing && ['final', 'error', 'cancelled'].includes(existing.status)) return Promise.resolve(this.bridge.publicJob(existing));
     return new Promise(resolve => { this._waiter = { id: jobId, resolve }; });
   }
-  async _sendAndWait(prompt, { newChat }) {
-    this._lastPrompt = { prompt, newChat };
+  async _sendAndWait(prompt, { newChat, attachments }) {
+    this._lastPrompt = { prompt, newChat, attachments };
     this.run.liveText = '';
     const job = this.bridge.enqueue(this.run.goal.slice(0, 120), prompt, [], {
-      kind: 'agent', newChat, expectConversation: newChat ? null : this.run.conversationUrl
+      kind: 'agent', newChat, expectConversation: newChat ? null : this.run.conversationUrl, attachments
     });
     this.run.jobId = job.id;
     if (newChat) this.meter.startChat(prompt.length); else this.meter.addSent(prompt.length);
@@ -259,6 +262,28 @@ class AgentRunner extends EventEmitter {
     return this.snapshot();
   }
 
+  /* ---------- tệp đính kèm ---------- */
+  /** Thêm tệp đính kèm cho tin nhắn kế tiếp. Ném lỗi (tiếng Việt) nếu không hợp lệ. */
+  attach(name, base64) {
+    const att = attachmentsLib.normalize({ name, base64 }, this.attachments);
+    this.attachments.push(att);
+    this.emitState();
+    return attachmentsLib.publicInfo(att);
+  }
+  detach(id) {
+    const n = this.attachments.length;
+    this.attachments = this.attachments.filter(a => a.id !== id);
+    if (this.attachments.length !== n) this.emitState();
+    return this.attachments.length !== n;
+  }
+  /** Lấy (và xoá) tệp đính kèm chờ gửi: phần chữ nhúng vào prompt, ảnh đi qua extension. */
+  _takeAttachments() {
+    const list = this.attachments;
+    this.attachments = [];
+    if (list.length) this.pushStep({ type: 'info', text: `Đính kèm: ${list.map(a => `${a.name} (${a.kind === 'image' ? 'ảnh' : 'văn bản'})`).join(', ')}` });
+    return { text: attachmentsLib.renderTextSection(list), images: attachmentsLib.imagePayload(list) };
+  }
+
   /** Người dùng yêu cầu: lần gửi kế tiếp sẽ mở chat Gemini mới kèm bản tóm tắt. */
   rotateNext() {
     if (!this.run.id) throw new Error('Chưa có phiên agent.');
@@ -292,7 +317,8 @@ class AgentRunner extends EventEmitter {
     this._running = true;
     this.pushStep({ type: 'info', text: `Mục tiêu: ${text}` });
     if (checks.length) this.pushStep({ type: 'info', text: `Lệnh kiểm tra gợi ý cho agent: ${checks.map(c => c.command).join(' · ')}` });
-    this._loop(protocol.buildKickoff({ systemPrompt, goal: text }), { newChat: true });
+    const att = this._takeAttachments();
+    this._loop(protocol.buildKickoff({ systemPrompt, goal: text }) + att.text, { newChat: true, attachments: att.images });
     return this.snapshot();
   }
   /** Gửi tin nhắn tiếp theo (trả lời câu hỏi của agent hoặc giao thêm việc). */
@@ -306,7 +332,8 @@ class AgentRunner extends EventEmitter {
     this.run.error = '';
     this.pushStep({ type: 'user', text: t });
     this.ledger.recordUser(t);
-    this._loop(`Tin nhắn mới từ người dùng:\n${t}`, { newChat: false });
+    const att = this._takeAttachments();
+    this._loop(`Tin nhắn mới từ người dùng:\n${t}` + att.text, { newChat: false, attachments: att.images });
     return this.snapshot();
   }
   /** Gửi lại prompt gần nhất (sau timeout/lỗi). */
@@ -317,8 +344,8 @@ class AgentRunner extends EventEmitter {
     this._cancelled = false;
     this.run.error = '';
     this.pushStep({ type: 'info', text: 'Thử lại lượt vừa rồi…' });
-    const { prompt, newChat } = this._lastPrompt;
-    this._loop(prompt, { newChat });
+    const { prompt, newChat, attachments } = this._lastPrompt;
+    this._loop(prompt, { newChat, attachments });
     return this.snapshot();
   }
   cancel() {
@@ -375,6 +402,10 @@ class AgentRunner extends EventEmitter {
             opts = { newChat: true };
             this.run.conversationUrl = null;
             continue;
+          }
+          if (job.code === 'attachment_failed' && this._lastPrompt) {
+            this._lastPrompt.attachments = [];   // "Thử lại" sẽ gửi chỉ phần chữ
+            this.pushStep({ type: 'info', text: 'Không đính kèm được ảnh vào Gemini (cơ chế tải ảnh lên chưa được kiểm chứng trên mọi giao diện). Bấm "Thử lại" để gửi chỉ phần chữ, hoặc sao chép prompt và đính kèm ảnh thủ công trong tab Gemini.' });
           }
           this.pushStep({ type: 'error', text: job.answer || 'Lỗi không rõ khi làm việc với Gemini.' });
           this.setStatus('error', { error: job.answer || 'Lỗi', liveText: '' });

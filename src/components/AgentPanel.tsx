@@ -1,15 +1,15 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Bot, Check, Circle, CircleCheck, ExternalLink, ChevronDown, ChevronRight, ClipboardCopy, FilePen, FileSearch, History, ListChecks, LoaderCircle,
+  Bot, Check, Circle, CircleCheck, ExternalLink, ChevronDown, ChevronRight, ClipboardCopy, FilePen, FileSearch, History, ListChecks, LoaderCircle, Paperclip,
   Play, RotateCcw, ShieldAlert, ShieldCheck, Square, TerminalSquare, Undo2, X
 } from 'lucide-react';
-import type { AgentPending, AgentPlan, AgentPlanStatus, AgentState, AgentStep, CheckpointInfo, DiffHunkView, PreviousSession } from '../types';
+import type { AgentAttachment, AgentPending, AgentPlan, AgentPlanStatus, AgentState, AgentStep, CheckpointInfo, DiffHunkView, PreviousSession } from '../types';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import './AgentPanel.css';
 
 const EMPTY: AgentState = {
   id: null, goal: '', status: 'idle', turn: 0, maxTurns: 25, conversationUrl: null, jobId: null,
-  liveText: '', error: '', question: '', plan: null, policy: { autoEdits: false },
+  liveText: '', error: '', question: '', plan: null, attachments: [], policy: { autoEdits: false },
   context: { chars: 0, tokens: 0, budgetChars: 240000, budgetTokens: 68572, ratio: 0, chatIndex: 0, rotations: 0, turnsInChat: 0, rotateRequested: false },
   steps: [], pending: []
 };
@@ -65,6 +65,39 @@ function PlanChecklist({ plan }: { plan: AgentPlan }) {
           ))}
         </ul>
       )}
+    </div>
+  );
+}
+
+const ATTACH_ACCEPT = 'image/png,image/jpeg,image/gif,image/webp,.txt,.md,.log,.json,.csv,.ts,.tsx,.js,.jsx,.py,.go,.rs,.java,.css,.html,.yml,.yaml,.toml,.xml,.sh,.sql';
+const ATTACH_MAX_BYTES = 4 * 1024 * 1024;
+
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('Không đọc được tệp.'));
+    reader.onload = () => resolve(String(reader.result || '').split(',')[1] || '');
+    reader.readAsDataURL(file);
+  });
+}
+const kb = (n: number) => (n >= 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
+
+/** Nút đính kèm + danh sách tệp chờ gửi. Ảnh đi qua extension (chưa kiểm chứng trên Gemini thật); tệp văn bản được nhúng thẳng vào prompt. */
+function AttachBar({ items, disabled, onPick, onRemove }: { items: AgentAttachment[]; disabled: boolean; onPick: (files: File[]) => void; onRemove: (id: string) => void }) {
+  const input = useRef<HTMLInputElement>(null);
+  return (
+    <div className="agent-attach">
+      <button type="button" className="agent-link agent-attach-btn" disabled={disabled} onClick={() => input.current?.click()} title="Đính kèm ảnh chụp lỗi hoặc tệp văn bản (log...). Có thể dán ảnh bằng Ctrl+V vào ô nhập.">
+        <Paperclip size={12} /> Đính kèm
+      </button>
+      <input ref={input} type="file" hidden multiple accept={ATTACH_ACCEPT} onChange={e => { const f = Array.from(e.target.files || []); e.target.value = ''; if (f.length) onPick(f); }} />
+      {items.map(a => (
+        <span key={a.id} className={`agent-chip ${a.kind}`} title={`${a.name} · ${a.kind === 'image' ? 'ảnh gửi qua extension (cơ chế tải ảnh chưa được kiểm chứng trên Gemini thật)' : 'văn bản nhúng vào prompt'}`}>
+          <span className="agent-chip-name">{a.name}</span>
+          <span className="agent-chip-meta">{a.kind === 'image' ? 'ảnh' : 'văn bản'} · {kb(a.size)}</span>
+          <button type="button" aria-label={`Bỏ đính kèm ${a.name}`} onClick={() => onRemove(a.id)}><X size={11} /></button>
+        </span>
+      ))}
     </div>
   );
 }
@@ -306,6 +339,17 @@ export function AgentPanel({ connected, workspaceOpen, onToast, onFilesChanged }
 
   const start = () => run(async () => { await window.studio.agent.start(goal); setGoal(''); });
   const send = () => run(async () => { await window.studio.agent.reply(reply); setReply(''); });
+  const addFiles = (files: File[]) => run(async () => {
+    for (const f of files) {
+      if (f.size > ATTACH_MAX_BYTES) throw new Error(`${f.name}: tệp quá lớn (tối đa ${ATTACH_MAX_BYTES / 1024 / 1024} MB).`);
+      await window.studio.agent.attach(f.name || 'anh-dan.png', await fileToBase64(f));
+    }
+  });
+  const removeAttachment = (id: string) => run(async () => { await window.studio.agent.detach(id); });
+  const onPasteFiles = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const files = Array.from(e.clipboardData.files || []);
+    if (files.length) { e.preventDefault(); void addFiles(files); }
+  };
   const decide = (id: string, decision: 'approve' | 'reject' | 'approve_all_edits' | 'approve_group') =>
     run(async () => { await window.studio.agent.approve(id, decision); if (decision !== 'reject') onFilesChanged?.(); });
   const copyPrompt = () => run(async () => {
@@ -439,7 +483,8 @@ export function AgentPanel({ connected, workspaceOpen, onToast, onFilesChanged }
       <div className="agent-composer">
         {canStart && !awaitingReply && (
           <>
-            <textarea placeholder="Mục tiêu cho agent. Ví dụ: tìm và sửa lỗi đăng nhập, rồi chạy test" value={goal} onChange={e => setGoal(e.target.value)} rows={3} />
+            <textarea placeholder="Mục tiêu cho agent. Ví dụ: tìm và sửa lỗi đăng nhập, rồi chạy test" value={goal} onChange={e => setGoal(e.target.value)} onPaste={onPasteFiles} rows={3} />
+            <AttachBar items={state.attachments} disabled={busy} onPick={addFiles} onRemove={removeAttachment} />
             <button className="agent-btn primary" disabled={busy || !goal.trim()} onClick={start}><Play size={14} /> Bắt đầu</button>
           </>
         )}
@@ -447,12 +492,13 @@ export function AgentPanel({ connected, workspaceOpen, onToast, onFilesChanged }
           <>
             <textarea
               placeholder={status === 'waiting_user' ? 'Trả lời agent…' : 'Giao thêm việc cho agent (cùng cuộc trò chuyện)…'}
-              value={reply} onChange={e => setReply(e.target.value)} rows={2}
+              value={reply} onChange={e => setReply(e.target.value)} onPaste={onPasteFiles} rows={2}
               onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); if (reply.trim() && !busy) void send(); } }}
             />
+            <AttachBar items={state.attachments} disabled={busy} onPick={addFiles} onRemove={removeAttachment} />
             <div className="agent-row">
               <button className="agent-btn primary" disabled={busy || !reply.trim()} onClick={send}>Gửi</button>
-              <button className="agent-btn" disabled={busy} onClick={() => { void window.studio.agent.cancel().then(() => setState(s => ({ ...s, id: null, steps: [], plan: null, status: 'idle' }))); }} title="Bắt đầu lại với mục tiêu mới">Phiên mới</button>
+              <button className="agent-btn" disabled={busy} onClick={() => { void window.studio.agent.cancel().then(() => setState(s => ({ ...s, id: null, steps: [], plan: null, attachments: [], status: 'idle' }))); }} title="Bắt đầu lại với mục tiêu mới">Phiên mới</button>
             </div>
           </>
         )}

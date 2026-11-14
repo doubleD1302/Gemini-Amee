@@ -54,10 +54,13 @@ export type AgentPlanStatus = 'pending'|'in_progress'|'done';
 export interface AgentPlanItem { text: string; status: AgentPlanStatus; }
 /** Kế hoạch do model xuất (tool `plan`): chỉ để hiển thị, văn bản mục là dữ liệu không tin cậy → render dạng text thuần. */
 export interface AgentPlan { items: AgentPlanItem[]; updatedAt: number; }
+/** Tệp đính kèm chờ gửi ở tin nhắn kế tiếp (chỉ thông tin, không có dữ liệu). */
+export interface AgentAttachment { id: string; name: string; kind: 'image'|'text'; size: number; }
 export interface AgentState {
   id: string|null; goal: string; status: AgentStatus; turn: number; maxTurns: number;
   conversationUrl: string|null; jobId: string|null; liveText: string; error: string; question: string;
   plan: AgentPlan|null;
+  attachments: AgentAttachment[];
   policy: { autoEdits: boolean };
   context: AgentContext;
   steps: AgentStep[]; pending: AgentPending[];
@@ -73,6 +76,8 @@ export interface AgentApi {
   openInEditor(rel: string, line: number, editor: string): Promise<{ opened: 'url'|'path'|'none'; fallback: boolean; editor: string; line: number; error?: string }>;
   resume(opts?: { continueRun?: boolean }): Promise<AgentState>;
   discardPrevious(): Promise<boolean>;
+  attach(name: string, base64: string): Promise<AgentAttachment>;
+  detach(id: string): Promise<boolean>;
   cancel(): Promise<AgentState>;
   approve(id: string, decision: 'approve'|'reject'|'approve_all_edits'|'approve_group', reason?: string): Promise<{ ok: boolean }>;
   setPolicy(policy: { autoEdits: boolean }): Promise<{ autoEdits: boolean }>;

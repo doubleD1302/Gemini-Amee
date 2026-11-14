@@ -68,13 +68,15 @@ class Bridge extends EventEmitter {
   }
   info() { return { url: `http://127.0.0.1:${this.port}`, connected: Date.now() - this.lastSeen < 12000, token: this.token }; }
 
-  publicJob(job) { return { ...job, prompt: undefined }; }
+  // Không bao giờ phát dữ liệu ảnh (base64) ra ngoài bridge/giao diện: chỉ số lượng.
+  publicJob(job) { return { ...job, prompt: undefined, attachments: undefined, attachmentCount: (job.attachments || []).length }; }
 
   enqueue(question, prompt, included, opts = {}) {
     const job = {
       id: String(this.nextId++), question, prompt, included: included || [], status: 'queued', answer: '', updatedAt: Date.now(),
       kind: opts.kind || 'chat', newChat: !!opts.newChat, expectConversation: opts.expectConversation || null,
-      conversationUrl: opts.expectConversation || null, attempts: 0, dispatchedAt: 0, code: ''
+      conversationUrl: opts.expectConversation || null, attempts: 0, dispatchedAt: 0, code: '',
+      attachments: Array.isArray(opts.attachments) ? opts.attachments.slice(0, 3) : []   // ảnh {name,mime,data(base64)} đã được attachments.cjs kiểm tra
     };
     this.jobs.push(job);
     while (this.jobs.length > 60) {
@@ -98,10 +100,10 @@ class Bridge extends EventEmitter {
     return true;
   }
   /** Đưa job về hàng đợi với prompt mới (dùng khi tab Gemini lệch cuộc trò chuyện). */
-  requeue(id, { prompt, newChat, expectConversation = null }) {
+  requeue(id, { prompt, newChat, expectConversation = null, attachments }) {
     const job = this.getJob(id);
     if (!job) return false;
-    this.setJob(job, { status: 'queued', prompt, newChat: !!newChat, expectConversation, conversationUrl: expectConversation, attempts: 0, code: '', answer: '' });
+    this.setJob(job, { status: 'queued', prompt, newChat: !!newChat, expectConversation, conversationUrl: expectConversation, attempts: 0, code: '', answer: '', ...(attachments !== undefined ? { attachments } : {}) });
     return true;
   }
   /** Dán câu trả lời thủ công (không cần extension). Đi qua cùng luồng sự kiện nên vòng lặp agent vẫn chạy tiếp. */
@@ -160,7 +162,7 @@ class Bridge extends EventEmitter {
         job.attempts++;
         job.dispatchedAt = Date.now();
         this.setJob(job, { status: 'dispatched' });
-        return this.json(res, 200, { job: { id: job.id, prompt: job.prompt, newChat: job.newChat, expectConversation: job.expectConversation } });
+        return this.json(res, 200, { job: { id: job.id, prompt: job.prompt, newChat: job.newChat, expectConversation: job.expectConversation, attachments: job.attachments } });
       }
       if (req.method === 'POST' && route === '/v1/result') {
         const body = await this.body(req);
