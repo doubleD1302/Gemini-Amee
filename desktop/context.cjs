@@ -29,6 +29,14 @@ class ContextMeter {
     this.chars = promptChars;
     this.turns = 1;
   }
+  /** Khôi phục số liệu của phiên đã lưu. Gemini cũ không còn dùng được → chatIndex ≥ 1 để lần gửi kế tiếp mở chat mới. */
+  restore(d) {
+    this.chars = (d && d.chars) || 0;
+    this.turns = (d && d.turns) || 0;
+    this.chatIndex = Math.max(1, (d && d.chatIndex) || 1);
+    this.rotations = (d && d.rotations) || 0;
+    this.rotateRequested = false;
+  }
   addSent(n) { this.chars += n; this.turns++; }
   addReceived(n) { this.chars += n; }
   /** Có nên chuyển chat trước khi gửi prompt `nextChars` ký tự? Luôn để chat có ít nhất một lượt trao đổi (tránh quay vòng). */
@@ -82,6 +90,27 @@ class Ledger {
   recordRejected(text) { this.rejected.push(text); if (this.rejected.length > MAX_REJECTED) this.rejected.shift(); }
   recordUser(text) { this.userMessages.push(clip(String(text).trim(), 300)); if (this.userMessages.length > MAX_USER) this.userMessages.shift(); }
   recordNote(text) { const t = String(text || '').trim(); if (t) this.lastNote = clip(t, 900); }
+
+  /** Dạng JSON để lưu bền (xem sessions.cjs). */
+  toJSON() {
+    return {
+      changed: [...this.changed.entries()], read: this.read.slice(), commands: this.commands.slice(),
+      failures: [...this.failures.entries()], rejected: this.rejected.slice(), userMessages: this.userMessages.slice(), lastNote: this.lastNote
+    };
+  }
+  /** Nạp lại từ dữ liệu ĐÃ được sanitizeSession chuẩn hoá. */
+  load(d) {
+    this.clear();
+    if (!d) return this;
+    for (const [p, e] of d.changed || []) this.changed.set(p, { created: !!e.created, ops: { ...e.ops } });
+    this.read = (d.read || []).slice(-MAX_READ);
+    this.commands = (d.commands || []).slice(-MAX_CMDS);
+    for (const [c, t] of d.failures || []) this.failures.set(c, t);
+    this.rejected = (d.rejected || []).slice(-MAX_REJECTED);
+    this.userMessages = (d.userMessages || []).slice(-MAX_USER);
+    this.lastNote = d.lastNote || '';
+    return this;
+  }
 
   isEmpty() {
     return !this.changed.size && !this.read.length && !this.commands.length && !this.rejected.length && !this.userMessages.length && !this.lastNote;

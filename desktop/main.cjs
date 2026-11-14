@@ -7,6 +7,7 @@ const tools = require('./tools.cjs');
 const { Bridge, loadOrCreateState } = require('./bridge.cjs');
 const { CheckpointStore } = require('./checkpoints.cjs');
 const { AgentRunner } = require('./agent.cjs');
+const { SessionStore } = require('./sessions.cjs');
 let bridge = null;
 let runner = null;
 let checkpoints = null;
@@ -74,7 +75,7 @@ app.whenReady().then(async () => {
   bridge = new Bridge({ token: state.token, port: state.port });
   await bridge.start();
   checkpoints = new CheckpointStore(path.join(userData, 'checkpoints'));
-  runner = new AgentRunner({ bridge, workspace, tools, checkpoints, getRoot: () => currentRoot });
+  runner = new AgentRunner({ bridge, workspace, tools, checkpoints, getRoot: () => currentRoot, sessions: new SessionStore(path.join(userData, 'sessions')) });
   bridge.on('job', job => {
     if (job.kind === 'chat') {
       const m = job.conversationUrl && CONV_RE.exec(job.conversationUrl);
@@ -175,6 +176,9 @@ app.whenReady().then(async () => {
   ipcMain.handle('agent:reply', (_event, text) => runner.reply(text));
   ipcMain.handle('agent:retry', () => runner.retry());
   ipcMain.handle('agent:rotate-next', () => runner.rotateNext());
+  ipcMain.handle('agent:previous', () => runner.previousSession());
+  ipcMain.handle('agent:resume', (_event, opts) => runner.resume({ continueRun: !(opts && opts.continueRun === false) }));
+  ipcMain.handle('agent:discard-previous', () => runner.discardPrevious());
   ipcMain.handle('agent:cancel', () => runner.cancel());
   ipcMain.handle('agent:approve', (_event, id, decision, reason) => runner.approve(String(id), String(decision), String(reason || '')));
   ipcMain.handle('agent:set-policy', (_event, policy) => runner.setPolicy(policy));

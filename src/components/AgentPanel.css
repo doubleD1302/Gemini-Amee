@@ -90,3 +90,10 @@
 .agent-context-fill.low { background: #10b981; }
 .agent-context-fill.mid { background: #f59e0b; }
 .agent-context-fill.high { background: #ef4444; }
+
+/* Phiên lưu bền (mục 4) */
+.agent-step-status.expired, .agent-step-status.interrupted { color: var(--text-dim, #64748b); text-decoration: line-through; }
+.agent-resume { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border: 1px solid rgba(129,140,248,.35); border-radius: 10px; background: rgba(99,102,241,.07); }
+.agent-resume-head { display: flex; align-items: center; gap: 6px; color: var(--text-main, #f1f5f9); }
+.agent-resume-goal { font-size: 12.5px; color: var(--text-main, #f1f5f9); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
+.agent-resume-meta, .agent-resume-note { font-size: 11px; color: var(--text-muted, #94a3b8); line-height: 1.5; }

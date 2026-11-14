@@ -35,10 +35,14 @@ export interface AgentStep {
   id: string; at: number;
   type: 'info'|'user'|'assistant'|'tool'|'error';
   text?: string; tool?: string; label?: string; summary?: string; diff?: string; output?: string;
-  status?: 'running'|'waiting_approval'|'done'|'failed'|'rejected'|'error';
+  status?: 'running'|'waiting_approval'|'done'|'failed'|'rejected'|'error'|'expired'|'interrupted';
   checkpoint?: string;
 }
 export interface AgentPending { id: string; tool: string; label: string; summary: string; diff: string; kind: 'edit'|'exec'; source: 'agent'|'vibe'; createdAt: number; }
+export interface PreviousSession {
+  id: string; goal: string; savedAt: number; status: string; turn: number; stepCount: number;
+  filesChanged: string[]; interrupted: boolean; expiredApprovals: number; chatIndex: number;
+}
 export interface AgentContext {
   chars: number; tokens: number; budgetChars: number; budgetTokens: number; ratio: number;
   chatIndex: number; rotations: number; turnsInChat: number; rotateRequested: boolean;
@@ -57,6 +61,9 @@ export interface AgentApi {
   reply(text: string): Promise<AgentState>;
   retry(): Promise<AgentState>;
   rotateNext(): Promise<AgentState>;
+  previous(): Promise<PreviousSession|null>;
+  resume(opts?: { continueRun?: boolean }): Promise<AgentState>;
+  discardPrevious(): Promise<boolean>;
   cancel(): Promise<AgentState>;
   approve(id: string, decision: 'approve'|'reject'|'approve_all_edits', reason?: string): Promise<{ ok: boolean }>;
   setPolicy(policy: { autoEdits: boolean }): Promise<{ autoEdits: boolean }>;

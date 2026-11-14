@@ -9,6 +9,7 @@ Giao tiếp và UI bằng **tiếng Việt**. Không có API key Gemini; không 
 - `desktop/agent.cjs` – `AgentRunner`: vòng lặp tối đa 25 lượt, retry định dạng ≤2, duyệt từng bước, policy `{autoEdits}`.
 - `desktop/agent-protocol.cjs` – parse/format khối gps-tool, system prompt, kickoff, recap.
 - `desktop/context.cjs` – `ContextMeter` (ước lượng ký tự/token của chat Gemini hiện tại; ngân sách mặc định 240k ký tự CHƯA kiểm chứng với giới hạn thật) và `Ledger` (sổ tiến độ do ỨNG DỤNG ghi từ các tool đã chạy: file đã sửa, lệnh, việc còn dở). Agent tự mở chat mới kèm recap khi vượt ngân sách (`deps.contextBudgetChars`) hoặc khi người dùng bấm "Chat mới ở lượt sau".
+- `desktop/sessions.cjs` – `SessionStore`: lưu bền phiên Agent theo project trong userData (NGOÀI project, ghi nguyên tử, đọc lên được kiểm tra kiểu/độ dài). Lưu: mục tiêu, timeline, nhật ký, sổ tiến độ, số liệu ngữ cảnh. KHÔNG lưu/khôi phục: yêu cầu duyệt đang chờ (đánh dấu HẾT HẠN, không bao giờ tự chạy), chính sách tự duyệt (luôn tắt sau khi mở lại), system prompt (dựng lại). Khôi phục luôn mở chat Gemini MỚI kèm recap.
 - `desktop/project-hints.cjs` – suy ra lệnh test/lint/typecheck/build từ package.json (+Cargo/go/pytest) để GỢI Ý trong system prompt; không chép thân script (dữ liệu không tin cậy).
 - `desktop/tools.cjs` – read_file/list_dir/grep/write_file/edit_file/run_command/finish/ask_user (`prepare` không side-effect, `run` thực thi).
 - `desktop/workspace.cjs` – truy cập file an toàn (realpath, ghi nguyên tử, .gitignore, chấm điểm ngữ cảnh).
@@ -18,7 +19,7 @@ Giao tiếp và UI bằng **tiếng Việt**. Không có API key Gemini; không 
 
 ## Lệnh
 ```
-npm test                 # node --test tests/*.test.cjs  (125 test; KHÔNG dùng `node --test tests/`)
+npm test                 # node --test tests/*.test.cjs  (133 test; KHÔNG dùng `node --test tests/`)
 npx tsc --noEmit         # strict, phải exit 0
 npx vite build
 npm run package:win      # build bản Windows (cap-nhat-extension.bat chép từ release/win-unpacked)
@@ -38,6 +39,7 @@ npm run package:win      # build bản Windows (cap-nhat-extension.bat chép t�
 4. Mọi ghi file kiểm tra realpath của tổ tiên gần nhất (chặn symlink/junction).
 5. Checkpoint nằm ngoài project; không tạo file rác trong project người dùng.
 6. Không đóng gói node_modules; không đọc .env/khóa/credential.
+7. Phiên khôi phục không bao giờ thực thi lại thao tác chờ duyệt cũ và không khôi phục tự duyệt (xem `sessions.cjs`).
 
 ## Chưa kiểm chứng (đừng giả định)
 - Bộ chọn DOM (`extension/selectors.js`) ĐÃ được chẩn đoán trên Gemini Web thật ngày 2026-11-14 (Chrome 158, giao diện tiếng Việt, tab /app): composer, nút Gửi, nút Dừng, khối trả lời, khối code, chat mới đều khớp; cấu trúc code-block đã đối chiếu với md.js (test 'REAL Gemini DOM'). CHƯA chạy: luồng thật điền prompt vào Quill → bấm Gửi → chờ/bắt trả lời, giao diện tiếng Anh/ngôn ngữ khác, Gemini cho tài khoản/tính năng khác. Nút Gửi và nút Dừng là CÙNG một nút (đổi nhãn) — không bao giờ coi nút nhãn dừng/ngừng là nút Gửi; UI của extension (#gps-bridge-hud…) luôn bị loại khỏi tìm kiếm.

@@ -3,7 +3,7 @@ import {
   Bot, Check, ChevronDown, ChevronRight, ClipboardCopy, FilePen, FileSearch, History, LoaderCircle,
   Play, RotateCcw, ShieldAlert, ShieldCheck, Square, TerminalSquare, Undo2, X
 } from 'lucide-react';
-import type { AgentPending, AgentState, AgentStep, CheckpointInfo } from '../types';
+import type { AgentPending, AgentState, AgentStep, CheckpointInfo, PreviousSession } from '../types';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import './AgentPanel.css';
 
@@ -125,6 +125,8 @@ function StepRow({ step }: { step: AgentStep }) {
           {status === 'error' && 'lỗi'}
           {status === 'rejected' && 'từ chối'}
           {status === 'waiting_approval' && 'chờ duyệt'}
+          {status === 'expired' && 'hết hạn'}
+          {status === 'interrupted' && 'bị gián đoạn'}
         </span>
       </button>
       {step.summary && <div className="agent-step-summary">{step.summary}</div>}
@@ -151,6 +153,7 @@ export function AgentPanel({ connected, workspaceOpen, onToast, onFilesChanged }
   const [manual, setManual] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [previous, setPrevious] = useState<PreviousSession | null>(null);
   const [checkpoints, setCheckpoints] = useState<CheckpointInfo[]>([]);
   const [showCheckpoints, setShowCheckpoints] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -162,6 +165,14 @@ export function AgentPanel({ connected, workspaceOpen, onToast, onFilesChanged }
     const off = window.studio.agent.onState(s => { if (alive) setState(s); });
     return () => { alive = false; off(); };
   }, []);
+
+  // Phiên đã lưu của project hiện tại (nếu có) — hiện thẻ "Tiếp tục phiên trước" khi chưa có phiên nào đang chạy.
+  useEffect(() => {
+    let alive = true;
+    if (!workspaceOpen || state.id) { setPrevious(null); return () => { alive = false; }; }
+    window.studio.agent.previous().then(p => { if (alive) setPrevious(p); }).catch(() => { if (alive) setPrevious(null); });
+    return () => { alive = false; };
+  }, [workspaceOpen, state.id]);
 
   const refreshCheckpoints = useCallback(() => {
     window.studio.agent.checkpoints().then(setCheckpoints).catch(() => {});
@@ -253,6 +264,23 @@ export function AgentPanel({ connected, workspaceOpen, onToast, onFilesChanged }
       )}
 
       <div className="agent-scroll">
+        {!hasRun && previous && (
+          <div className="agent-resume">
+            <div className="agent-resume-head"><History size={14} /> <strong>Phiên trước chưa kết thúc trong Studio</strong></div>
+            <div className="agent-resume-goal" title={previous.goal}>{previous.goal}</div>
+            <div className="agent-resume-meta">
+              Lưu lúc {previous.savedAt ? new Date(previous.savedAt).toLocaleString('vi-VN') : 'không rõ'} · {previous.stepCount} bước
+              {previous.filesChanged.length > 0 && <> · đã sửa {previous.filesChanged.length} file ({previous.filesChanged.slice(0, 3).join(', ')}{previous.filesChanged.length > 3 ? '…' : ''})</>}
+            </div>
+            {previous.interrupted && <div className="agent-warn">Phiên bị gián đoạn khi ứng dụng đóng.{previous.expiredApprovals > 0 ? ` ${previous.expiredApprovals} yêu cầu duyệt đang chờ đã HẾT HẠN và sẽ không tự chạy.` : ''}</div>}
+            <div className="agent-resume-note">Gemini cũ không còn dùng được: tiếp tục sẽ mở chat Gemini mới kèm bản tóm tắt tiến độ. Chính sách tự duyệt luôn tắt sau khi mở lại.</div>
+            <div className="agent-row">
+              <button className="agent-btn primary" disabled={busy || !connected} title={connected ? '' : 'Cần extension kết nối để gửi tiếp tới Gemini'} onClick={() => run(async () => { await window.studio.agent.resume({ continueRun: true }); setPrevious(null); })}><Play size={14} /> Tiếp tục phiên trước</button>
+              <button className="agent-btn" disabled={busy} onClick={() => run(async () => { await window.studio.agent.resume({ continueRun: false }); setPrevious(null); })}>Chỉ xem lại</button>
+              <button className="agent-btn ghost" disabled={busy} onClick={() => run(async () => { await window.studio.agent.discardPrevious(); setPrevious(null); })}>Bỏ</button>
+            </div>
+          </div>
+        )}
         {!hasRun && (
           <div className="agent-intro">
             <Bot size={22} />

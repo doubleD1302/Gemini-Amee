@@ -34,6 +34,11 @@ class AgentRunner extends EventEmitter {
     this.getRoot = deps.getRoot;
     this.maxTurns = deps.maxTurns || 25;
     this.detectChecks = deps.detectChecks || null; // tuỳ chọn, để test ghi đè
+    this.sessions = deps.sessions || null;         // SessionStore (tuỳ chọn): lưu bền phiên theo project, NGOÀI project
+    this._runRoot = null;
+    this._persistTimer = null;
+    this._disposed = false;
+    this._rotateReason = '';
     this.policy = { autoEdits: false };
     this.meter = new ContextMeter(deps.contextBudgetChars || undefined);
     this.ledger = new Ledger();
@@ -46,7 +51,12 @@ class AgentRunner extends EventEmitter {
     this._onJob = job => this.handleJob(job);
     this.bridge.on('job', this._onJob);
   }
-  dispose() { this.bridge.removeListener('job', this._onJob); clearTimeout(this._emitTimer); }
+  dispose() {
+    this.bridge.removeListener('job', this._onJob);
+    clearTimeout(this._emitTimer);
+    this.flushSession();
+    this._disposed = true;
+  }
 
   _resetRun() {
     this.run = { id: null, goal: '', status: 'idle', turn: 0, conversationUrl: null, jobId: null, liveText: '', error: '', question: '' };
@@ -70,6 +80,7 @@ class AgentRunner extends EventEmitter {
     };
   }
   emitState(throttle = false) {
+    this._schedulePersist();
     if (throttle) {
       const now = Date.now();
       if (now - this._lastEmit < 250) {
@@ -138,6 +149,112 @@ class AgentRunner extends EventEmitter {
       ledgerText: this.ledger.render(), followUp, maxFollowUp: 24000, reason
     });
   }
+  _makeSystemPrompt(root) {
+    const index = this.ws.scanProject(root);
+    let checks = [];
+    try { checks = (this.detectChecks || projectHints.detectCheckCommands)(root); } catch { checks = []; }
+    const systemPrompt = protocol.buildSystemPrompt({
+      checks, specs: this.tools.specs(), projectName: index.name, fileCount: index.files.length, truncated: index.truncated,
+      tree: this.ws.buildCondensedTree(index.files, 3500)
+    });
+    return { systemPrompt, checks };
+  }
+
+  /* ---------- lưu bền phiên ---------- */
+  _schedulePersist() {
+    if (!this.sessions || this._disposed || this._persistTimer) return;
+    this._persistTimer = setTimeout(() => { this._persistTimer = null; this.flushSession(); }, 400);
+    if (this._persistTimer.unref) this._persistTimer.unref();
+  }
+  _exportSession() {
+    return {
+      savedAt: Date.now(),
+      run: { id: this.run.id, goal: this.run.goal, status: this.run.status, turn: this.run.turn, conversationUrl: this.run.conversationUrl, error: this.run.error, question: this.run.question },
+      steps: this.steps.slice(-MAX_STEPS_KEPT),
+      digest: this._digest.slice(-60),
+      meter: { chars: this.meter.chars, turns: this.meter.turns, chatIndex: this.meter.chatIndex, rotations: this.meter.rotations },
+      ledger: this.ledger.toJSON(),
+      // Chỉ để báo "hết hạn" sau khi mở lại; KHÔNG lưu diff/đối số nên không thể thực thi lại.
+      expiredApprovals: this.pending.map(p => ({ tool: p.tool, label: p.label, summary: p.summary, source: p.source }))
+    };
+  }
+  /** Ghi phiên ngay (đồng bộ). Trả về true nếu đã ghi. */
+  flushSession() {
+    clearTimeout(this._persistTimer);
+    this._persistTimer = null;
+    if (!this.sessions || !this.run.id || !this._runRoot || this.run.status === 'idle') return false;
+    try { this.sessions.save(this._runRoot, this._exportSession()); return true; } catch { return false; }
+  }
+  /** Tóm tắt phiên đã lưu của project hiện tại (null nếu không có hoặc phiên đó đang hoạt động trong bộ nhớ). */
+  previousSession() {
+    const root = this.getRoot();
+    if (!root || !this.sessions) return null;
+    if (this.run.id && this._runRoot === root) return null;
+    const s = this.sessions.load(root);
+    if (!s) return null;
+    return {
+      id: s.run.id, goal: s.run.goal, savedAt: s.savedAt, status: s.run.status, turn: s.run.turn, stepCount: s.steps.length,
+      filesChanged: s.ledger.changed.map(([p]) => p),
+      interrupted: ['running', 'waiting_approval'].includes(s.run.status),
+      expiredApprovals: s.steps.filter(x => x.status === 'waiting_approval').length + s.expiredApprovals.filter(e => e.source === 'vibe').length,
+      chatIndex: s.meter.chatIndex
+    };
+  }
+  discardPrevious() {
+    const root = this.getRoot();
+    if (root && this.sessions && !(this.run.id && this._runRoot === root)) this.sessions.clear(root);
+    return true;
+  }
+  /**
+   * Khôi phục phiên đã lưu. Yêu cầu duyệt đang chờ lúc app đóng bị đánh dấu HẾT HẠN và không bao giờ tự chạy.
+   * Chính sách tự duyệt KHÔNG được khôi phục (luôn tắt). Hội thoại Gemini cũ coi như mất: lần gửi kế tiếp mở chat mới kèm recap.
+   * continueRun=true: gửi tiếp luôn; false: chỉ khôi phục để xem lại, chờ người dùng nhắn.
+   */
+  resume({ continueRun = true } = {}) {
+    if (this._running) throw new Error('Agent đang chạy. Hãy dừng phiên hiện tại trước.');
+    if (!this.sessions) throw new Error('Chưa bật lưu phiên.');
+    const root = this.getRoot();
+    if (!root) throw new Error('Hãy mở thư mục dự án trước.');
+    const saved = this.sessions.load(root);
+    if (!saved) throw new Error('Không có phiên trước để khôi phục cho project này.');
+    const { systemPrompt } = this._makeSystemPrompt(root);
+
+    const expired = [];
+    const steps = saved.steps.map(st => {
+      if (st.status === 'waiting_approval') { expired.push(`${st.tool || '?'} ${st.label || ''}`.trim()); return { ...st, status: 'expired' }; }
+      if (st.status === 'running') return { ...st, status: 'interrupted' };
+      return st;
+    });
+    for (const e of saved.expiredApprovals) if (e.source === 'vibe') expired.push(`${e.tool} ${e.label} (đề xuất từ trang Gemini)`.trim());
+
+    const keepPending = this.pending.filter(p => p.source !== 'agent');
+    this._resetRun();
+    this._systemPrompt = systemPrompt;
+    this._runRoot = root;
+    this.pending = keepPending;
+    this.steps = steps;
+    this._digest = saved.digest.slice();
+    this.ledger.load(saved.ledger);
+    this.meter.restore(saved.meter);
+    Object.assign(this.run, { id: saved.run.id, goal: saved.run.goal, turn: 0, conversationUrl: null, error: '', question: '' });
+    this._rotateReason = 'ứng dụng được mở lại';
+    this.meter.rotateRequested = true;
+
+    const when = saved.savedAt ? new Date(saved.savedAt).toLocaleString('vi-VN') : 'không rõ';
+    this.pushStep({ type: 'info', text: `Đã khôi phục phiên trước (lưu lúc ${when}).${expired.length ? ` ${expired.length} yêu cầu duyệt đang chờ khi ứng dụng đóng đã HẾT HẠN và KHÔNG được tự thực thi: ${expired.join('; ')}.` : ''}` });
+
+    if (!continueRun) {
+      const done = saved.run.status === 'done';
+      this.setStatus(done ? 'done' : 'waiting_user', { question: done ? '' : 'Phiên được khôi phục để xem lại. Gõ tin nhắn để tiếp tục — sẽ mở chat Gemini mới kèm bản tóm tắt tiến độ.' });
+      return this.snapshot();
+    }
+    this._running = true;
+    this._cancelled = false;
+    this.pushStep({ type: 'info', text: 'Tiếp tục phiên trước…' });
+    this._loop('Ứng dụng vừa được mở lại và phiên làm việc được khôi phục. Các yêu cầu duyệt đang chờ ở phiên trước đã HẾT HẠN và CHƯA được thực thi' + (expired.length ? ' (' + expired.join('; ') + ')' : '') + '. Hãy kiểm tra trạng thái hiện tại bằng tool nếu cần (các file đã sửa nằm trong bản tóm tắt), rồi tiếp tục NHIỆM VỤ; nếu vẫn cần thao tác đã hết hạn, hãy đề xuất lại.', { newChat: false });
+    return this.snapshot();
+  }
+
   /** Người dùng yêu cầu: lần gửi kế tiếp sẽ mở chat Gemini mới kèm bản tóm tắt. */
   rotateNext() {
     if (!this.run.id) throw new Error('Chưa có phiên agent.');
@@ -152,13 +269,9 @@ class AgentRunner extends EventEmitter {
     if (!text) throw new Error('Hãy nhập mục tiêu cho agent.');
     const root = this.getRoot();
     if (!root) throw new Error('Hãy mở thư mục dự án trước.');
-    const index = this.ws.scanProject(root);
-    let checks = [];
-    try { checks = (this.detectChecks || projectHints.detectCheckCommands)(root); } catch { checks = []; }
-    this._systemPrompt = protocol.buildSystemPrompt({
-      checks, specs: this.tools.specs(), projectName: index.name, fileCount: index.files.length, truncated: index.truncated,
-      tree: this.ws.buildCondensedTree(index.files, 3500)
-    });
+    const built = this._makeSystemPrompt(root);
+    const checks = built.checks;
+    this._systemPrompt = built.systemPrompt;
     const keepPending = this.pending.filter(p => p.source !== 'agent');
     this.steps = [];
     this.pending = keepPending;
@@ -168,6 +281,8 @@ class AgentRunner extends EventEmitter {
     const systemPrompt = this._systemPrompt;
     this._resetRun();
     this._systemPrompt = systemPrompt;
+    this._runRoot = root;
+    this._rotateReason = '';
     this.run.id = uid('run');
     this.run.goal = text;
     this._running = true;
@@ -232,10 +347,14 @@ class AgentRunner extends EventEmitter {
         if (!opts.newChat && this.meter.shouldRotate(prompt.length)) {
           const m = this.meter.snapshot();
           const manual = this.meter.rotateRequested;
-          this.pushStep({ type: 'info', text: manual
+          const restored = this._rotateReason;
+          this._rotateReason = '';
+          this.pushStep({ type: 'info', text: restored
+            ? `Khôi phục phiên → mở chat Gemini mới kèm bản tóm tắt tiến độ (${restored}).`
+            : manual
             ? 'Theo yêu cầu của bạn → chuyển sang chat Gemini mới kèm bản tóm tắt tiến độ.'
             : `Hội thoại Gemini đã dài (~${m.chars.toLocaleString('vi-VN')} ký tự ≈ ${m.tokens.toLocaleString('vi-VN')} token, ngân sách ${m.budgetChars.toLocaleString('vi-VN')}) → chuyển sang chat mới kèm bản tóm tắt tiến độ.` });
-          prompt = this._buildRecap(prompt, 'cuộc trò chuyện trước đã quá dài nên được chuyển sang chat mới');
+          prompt = this._buildRecap(prompt, restored ? 'phiên được khôi phục sau khi mở lại ứng dụng; hội thoại Gemini cũ không còn' : 'cuộc trò chuyện trước đã quá dài nên được chuyển sang chat mới');
           opts = { newChat: true };
           this.run.conversationUrl = null;
           this.meter.rotations++;
