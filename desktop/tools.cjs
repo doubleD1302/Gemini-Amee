@@ -114,6 +114,30 @@ const grep = {
   }
 };
 
+/* ---------- search_code (BM25 + ký hiệu) ---------- */
+const search_code = {
+  name: 'search_code', kind: 'read',
+  description: 'Tìm trong dự án theo ý (xếp hạng BM25 trên nội dung, tên hàm/lớp/kiểu và đường dẫn; hiểu camelCase/snake_case, bỏ dấu tiếng Việt). Trả về file liên quan nhất kèm đoạn khớp nhất; dùng khi chưa biết file nào chứa chức năng cần sửa. Để tìm đúng một chuỗi hãy dùng grep.',
+  usage: 'tool: search_code\nquery: xử lý đăng nhập khi mật khẩu rỗng\nmax: 8     (tuỳ chọn, tối đa 20)',
+  prepare(ctx, args) {
+    if (!String(args.query || args.body || '').trim()) throw new Error('Thiếu tham số "query".');
+    return { label: String(args.query || args.body).trim().slice(0, 80) };
+  },
+  async run(ctx, args) {
+    const query = String(args.query || args.body || '').trim().slice(0, 300);
+    const r = workspace.searchCode(ctx.root, query, { limit: int(args.max, 8, 1, 20) });
+    if (!r.terms.length) return { output: 'Câu truy vấn không có từ khoá hữu ích (chỉ gồm từ quá phổ biến/ngắn). Hãy nêu tên hàm, biến hoặc khái niệm cụ thể.' };
+    if (!r.results.length) return { output: `Không có file nào khớp (${r.terms.join(', ')}). Thử từ khoá khác hoặc dùng grep.${r.partial ? ' (chỉ mục mới lập một phần)' : ''}` };
+    const lines = r.results.map((x, i) => {
+      const where = x.window ? ` · dòng ${x.window.start}-${x.window.end}` : '';
+      const syms = x.symbols.length ? ` · ký hiệu: ${x.symbols.map(s => `${s.name}@${s.line}`).join(', ')}` : '';
+      const snip = x.snippet ? '\n' + x.snippet.split('\n').map(l => '    ' + l).join('\n') : '';
+      return `${i + 1}. ${x.path} (điểm ${x.score})${where}${syms}${snip}`;
+    });
+    return { output: `Từ khoá: ${r.terms.join(', ')} · đã lập chỉ mục ${r.indexed} file${r.partial ? ' (một phần)' : ''}\n${lines.join('\n')}` };
+  }
+};
+
 /* ---------- write_file ---------- */
 function readIfExists(root, rel, overlay) {
   const { dest } = workspace.resolveWriteTarget(root, rel);
@@ -364,7 +388,7 @@ const git_commit = {
     return { output: `OK: đã commit ${r.hash} — ${r.summary} (${r.files} đường dẫn)`, exitCode: 0, ok: true };
   }
 };
-const TOOLS = { read_file, list_dir, grep, write_file, edit_file, run_command, git_status, git_diff, git_commit, plan, finish, ask_user };
+const TOOLS = { read_file, list_dir, grep, search_code, write_file, edit_file, run_command, git_status, git_diff, git_commit, plan, finish, ask_user };
 const specs = () => Object.values(TOOLS).map(t => ({ name: t.name, description: t.description, usage: t.usage }));
 
 module.exports = { TOOLS, specs, bool, computeEdit, unifiedDiff };

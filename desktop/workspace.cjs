@@ -1,6 +1,7 @@
 'use strict';
 const fs = require('node:fs');
 const fsp = require('node:fs/promises');
+const { Bm25Index, queryTerms, bestWindow } = require('./bm25.cjs');
 const path = require('node:path');
 
 const BLOCKED_DIRS = new Set(['.git', '.svn', '.hg', 'node_modules', '.next', '.nuxt', 'dist', 'build', 'coverage', '.venv', 'venv', '__pycache__', '.turbo', '.idea', '.vscode-test', '.cache', 'target', 'out', '.output', '.gps_backups']);
@@ -107,7 +108,9 @@ function resolveInside(root, relative) {
 
 const scanCache = new Map();
 const CACHE_TTL_MS = 25000;
-function clearScanCache() { scanCache.clear(); }
+// Chỉ mục BM25 theo project (trong bộ nhớ): lập lại theo chữ ký size:mtime của từng file, kiểm tra tối đa mỗi 5 giây.
+const bm25Cache = new Map();
+function clearScanCache() { scanCache.clear(); for (const e of bm25Cache.values()) e.checkedAt = 0; }
 
 function isTextCandidate(name) {
   const ext = path.extname(name).toLowerCase();
@@ -357,6 +360,68 @@ function contentBoost(root, ranked, terms) {
   }
   return boost;
 }
+/* ---------- Chỉ mục BM25 + ký hiệu (Giai đoạn 3, mục 5) ---------- */
+const BM25_REVALIDATE_MS = 5000;
+const BM25_BUDGET_MS = 3000;
+const BM25_MAX_FILE = 150_000;
+/** Lập/cập nhật chỉ mục cho project (chỉ đọc lại file đã đổi). Quá ngân sách thời gian → chỉ mục một phần (partial). */
+function ensureBm25(root, index = scanProject(root)) {
+  const base = index.root;
+  let entry = bm25Cache.get(base);
+  if (!entry) { entry = { idx: new Bm25Index(), checkedAt: 0, partial: false }; bm25Cache.set(base, entry); }
+  if (entry.idx.size && Date.now() - entry.checkedAt < BM25_REVALIDATE_MS) return entry;
+  const t0 = Date.now();
+  let partial = false;
+  const keep = new Set();
+  for (const f of index.files) {
+    keep.add(f.path);
+    if (f.size > BM25_MAX_FILE) continue;
+    let st;
+    try { st = fs.lstatSync(path.join(base, f.path)); } catch { continue; }
+    if (!st.isFile() || st.isSymbolicLink()) continue;
+    const sig = `${st.size}:${Math.floor(st.mtimeMs)}`;
+    if (entry.idx.sigOf(f.path) === sig) continue;
+    if (Date.now() - t0 > BM25_BUDGET_MS) { partial = true; continue; }
+    try { entry.idx.upsert(f.path, { sig, text: readProjectFile(root, f.path).content }); } catch { entry.idx.remove(f.path); }
+  }
+  entry.idx.prune(keep);
+  entry.partial = partial;
+  entry.checkedAt = Date.now();
+  return entry;
+}
+/**
+ * Tìm kiếm theo từ khoá có xếp hạng (BM25 + ký hiệu + đường dẫn). Trả về các file kèm đoạn khớp nhất.
+ * @returns {{ results: Array<{path:string,score:number,symbols:Array<{name:string,line:number}>,window:{start:number,end:number}|null,snippet:string}>, indexed:number, partial:boolean, terms:string[] }}
+ */
+function searchCode(root, query, { limit = 10 } = {}) {
+  const index = scanProject(root);
+  const entry = ensureBm25(root, index);
+  const terms = queryTerms(query);
+  const hits = entry.idx.search(terms, { limit: Math.max(1, Math.min(30, limit)) });
+  const results = hits.map(h => {
+    let window = null, snippet = '';
+    try {
+      const text = readProjectFile(root, h.path).content;
+      const w = bestWindow(text, terms, { idf: t => entry.idx.idf(t) });
+      if (w) {
+        window = { start: w.start, end: w.end };
+        snippet = text.split('\n').slice(w.start - 1, Math.min(w.end, w.start + 7)).map(l => l.replace(/\s+$/, '').slice(0, 160)).join('\n');
+      }
+    } catch { /* file đã đổi/không đọc được: bỏ đoạn trích */ }
+    return { path: h.path, score: Math.round(h.score * 100) / 100, symbols: h.symbols, window, snippet };
+  });
+  return { results, indexed: entry.idx.size, partial: entry.partial, terms };
+}
+/** Trích đoạn liên quan khi file dài hơn ngân sách: vài dòng đầu (import/khai báo) + cửa sổ khớp nhất. null nếu không có gì tốt hơn đầu file. */
+function relevantExcerpt(content, window, remaining) {
+  if (!window || window.start <= 12) return null;
+  const lines = content.split('\n');
+  const head = lines.slice(0, 8).join('\n');
+  const body = lines.slice(window.start - 1, window.end).join('\n');
+  const skipped = window.start - 1 - 8;
+  const text = `${head}\n… [lược bỏ ${skipped} dòng, đoạn liên quan nhất: dòng ${window.start}-${window.end}] …\n${body}`;
+  return text.slice(0, remaining);
+}
 function buildCondensedTree(files, maxChars = 3500) {
   if (files.length <= 60) {
     const list = files.map(f => f.path).join('\n');
@@ -383,7 +448,18 @@ function buildContext(root, question, { activePath = '', maxFiles = CONTEXT_DEFA
   const mentioned = mentionedPaths(question, index.files);
   const pre = [...index.files].sort((a, b) => score(b, terms, activePath, mentioned) - score(a, terms, activePath, mentioned));
   const boost = contentBoost(root, pre.slice(0, 300), terms);
-  const total = f => score(f, terms, activePath, mentioned) + (boost.get(f.path) || 0);
+  // BM25 + ký hiệu: điểm tương đối (cao nhất = 90) cộng thêm vào xếp hạng cũ; lỗi chỉ mục không bao giờ làm hỏng việc chọn ngữ cảnh.
+  const bm = new Map();
+  let bmTerms = [];
+  let bmIdx = null;
+  try {
+    const entry = ensureBm25(root, index);
+    bmIdx = entry.idx;
+    bmTerms = queryTerms(question);
+    const hits = entry.idx.search(bmTerms, { limit: 40 });
+    if (hits.length && hits[0].score > 0) for (const h of hits) bm.set(h.path, (h.score / hits[0].score) * 90);
+  } catch { /* bỏ qua */ }
+  const total = f => score(f, terms, activePath, mentioned) + (boost.get(f.path) || 0) + (bm.get(f.path) || 0);
   const ranked = [...index.files].sort((a, b) => total(b) - total(a));
   const included = [];
   const parts = [];
@@ -400,9 +476,16 @@ function buildContext(root, question, { activePath = '', maxFiles = CONTEXT_DEFA
       const remaining = charLimit - used;
       if (remaining < 300) break;
       const cut = content.length > remaining;
-      const sliced = content.slice(0, Math.min(content.length, remaining));
+      let sliced = content.slice(0, Math.min(content.length, remaining));
+      let excerptNote = '';
+      if (cut && bmIdx && bmTerms.length) {
+        // File dài: nếu phần liên quan nhất nằm ngoài phần đầu thì trích đoạn đó thay vì chỉ cắt đầu file.
+        const w = bestWindow(content, bmTerms, { idf: t => bmIdx.idf(t) });
+        const ex = relevantExcerpt(content, w, remaining);
+        if (ex) { sliced = ex; excerptNote = `, đoạn liên quan: dòng ${w.start}-${w.end}`; }
+      }
       const safeName = f.path.replace(/[<>]/g, '_');
-      parts.push(`\n--- FILE: ${safeName} (${sliced.length} characters${cut ? ', TRUNCATED' : ''}) ---\n${sliced}${cut ? '\n… [file truncated]' : ''}\n--- END FILE: ${safeName} ---`);
+      parts.push(`\n--- FILE: ${safeName} (${sliced.length} characters${cut ? ', TRUNCATED' : ''}${excerptNote}) ---\n${sliced}${cut ? '\n… [file truncated]' : ''}\n--- END FILE: ${safeName} ---`);
       included.push(f.path);
       used += sliced.length;
     } catch { /* skip excluded or invalid files */ }
@@ -435,6 +518,6 @@ function buildContext(root, question, { activePath = '', maxFiles = CONTEXT_DEFA
 }
 module.exports = {
   scanProject, readProjectFile, writeProjectFile, removeProjectFile, searchProject, grepProject, buildContext, buildCondensedTree,
-  resolveInside, resolveWriteTarget, isPrivate, clearScanCache, extractTerms, parseGitignore, gitignored,
+  resolveInside, resolveWriteTarget, isPrivate, clearScanCache, searchCode, ensureBm25, extractTerms, parseGitignore, gitignored,
   limits: { MAX_INDEX, MAX_TEXT_BYTES, CONTEXT_DEFAULT_FILES, CONTEXT_DEFAULT_CHARS }
 };
