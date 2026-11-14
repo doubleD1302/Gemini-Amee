@@ -31,14 +31,17 @@ export interface ChatSession {
   messages: ChatMessage[];
 }
 export type AgentStatus = 'idle'|'running'|'waiting_approval'|'waiting_user'|'done'|'error'|'cancelled';
+export interface DiffRow { k: 'ctx'|'chg'|'del'|'add'; l: { n: number; s: string }|null; r: { n: number; s: string }|null; }
+export interface DiffHunkView { header: string; rows: DiffRow[]; }
+export interface EditGroup { path: string; count: number; diff: string; view: DiffHunkView[]; line: number; summary: string; }
 export interface AgentStep {
   id: string; at: number;
   type: 'info'|'user'|'assistant'|'tool'|'error';
-  text?: string; tool?: string; label?: string; summary?: string; diff?: string; output?: string;
+  text?: string; tool?: string; label?: string; summary?: string; diff?: string; view?: DiffHunkView[]; line?: number; output?: string;
   status?: 'running'|'waiting_approval'|'done'|'failed'|'rejected'|'error'|'expired'|'interrupted';
   checkpoint?: string;
 }
-export interface AgentPending { id: string; tool: string; label: string; summary: string; diff: string; kind: 'edit'|'exec'; source: 'agent'|'vibe'; createdAt: number; }
+export interface AgentPending { id: string; tool: string; label: string; summary: string; diff: string; view?: DiffHunkView[]; line?: number; group?: EditGroup|null; kind: 'edit'|'exec'; source: 'agent'|'vibe'; createdAt: number; }
 export interface PreviousSession {
   id: string; goal: string; savedAt: number; status: string; turn: number; stepCount: number;
   filesChanged: string[]; interrupted: boolean; expiredApprovals: number; chatIndex: number;
@@ -62,10 +65,11 @@ export interface AgentApi {
   retry(): Promise<AgentState>;
   rotateNext(): Promise<AgentState>;
   previous(): Promise<PreviousSession|null>;
+  openInEditor(rel: string, line: number, editor: string): Promise<{ opened: 'url'|'path'|'none'; fallback: boolean; editor: string; line: number; error?: string }>;
   resume(opts?: { continueRun?: boolean }): Promise<AgentState>;
   discardPrevious(): Promise<boolean>;
   cancel(): Promise<AgentState>;
-  approve(id: string, decision: 'approve'|'reject'|'approve_all_edits', reason?: string): Promise<{ ok: boolean }>;
+  approve(id: string, decision: 'approve'|'reject'|'approve_all_edits'|'approve_group', reason?: string): Promise<{ ok: boolean }>;
   setPolicy(policy: { autoEdits: boolean }): Promise<{ autoEdits: boolean }>;
   jobPrompt(id: string): Promise<string|null>;
   checkpoints(): Promise<CheckpointInfo[]>;

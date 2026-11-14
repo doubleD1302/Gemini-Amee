@@ -20,7 +20,7 @@ const electronStub = {
   },
   dialog: { showOpenDialog: async () => ({ canceled: false, filePaths: [project] }) },
   ipcMain: { handle: (ch, fn) => handlers.set(ch, fn) },
-  shell: { openExternal() {}, showItemInFolder() {} },
+  shell: { openExternal(url) { (global.__openedUrls = global.__openedUrls || []).push(url); }, openPath(p) { (global.__openedPaths = global.__openedPaths || []).push(p); return ''; }, showItemInFolder() {} },
   clipboard: { writeText() {}, readText: () => '' }
 };
 const origLoad = Module._load;
@@ -54,7 +54,7 @@ const jobUpdates = id => sent.filter(s => s.ch === 'studio:job' && s.payload.id 
 
 test('boots, registers every IPC channel, persists token/port for stable pairing', async () => {
   await boot();
-  for (const ch of ['studio:init', 'studio:choose-folder', 'studio:read-file', 'studio:write-file', 'studio:search', 'studio:prepare', 'studio:send', 'studio:import-reply', 'agent:state', 'agent:start', 'agent:reply', 'agent:retry', 'agent:rotate-next', 'agent:previous', 'agent:resume', 'agent:discard-previous', 'agent:cancel', 'agent:approve', 'agent:set-policy', 'agent:job-prompt', 'agent:checkpoints', 'agent:undo']) assert(handlers.has(ch), ch);
+  for (const ch of ['studio:init', 'studio:choose-folder', 'studio:read-file', 'studio:write-file', 'studio:search', 'studio:prepare', 'studio:send', 'studio:import-reply', 'agent:state', 'agent:start', 'agent:reply', 'agent:retry', 'agent:rotate-next', 'agent:previous', 'agent:open-in-editor', 'agent:resume', 'agent:discard-previous', 'agent:cancel', 'agent:approve', 'agent:set-policy', 'agent:job-prompt', 'agent:checkpoints', 'agent:undo']) assert(handlers.has(ch), ch);
   assert.match(bridgeInfo.token, /^[0-9a-f]{64}$/);
   const saved = JSON.parse(fs.readFileSync(path.join(userData, 'bridge-state.json'), 'utf8'));
   assert.equal(saved.token, bridgeInfo.token);
@@ -73,6 +73,20 @@ test('async search, editor save with an out-of-project checkpoint, and undo', as
   assert.equal(cps[0].source, 'editor');
   await invoke('agent:undo', cps[0].id, false);
   assert.equal(fs.readFileSync(path.join(project, 'src', 'app.ts'), 'utf8'), 'export const answer = 42;\n');
+});
+
+test('open-in-editor goes through the project sandbox and Electron shell (URL with line, default-app fallback, outside paths refused)', async () => {
+  global.__openedUrls = []; global.__openedPaths = [];
+  const r = await invoke('agent:open-in-editor', 'src/app.ts', 1, 'cursor');
+  assert.equal(r.opened, 'url');
+  assert.equal(global.__openedUrls.length, 1);
+  assert.ok(global.__openedUrls[0].startsWith('cursor://file/') && global.__openedUrls[0].endsWith('/src/app.ts:1:1'), global.__openedUrls[0]);
+  const d = await invoke('agent:open-in-editor', 'src/app.ts', 5, 'default');
+  assert.equal(d.opened, 'path');
+  assert.equal(global.__openedPaths.length, 1);
+  await assert.rejects(() => invoke('agent:open-in-editor', '../outside.txt', 1, 'vscode'));
+  await assert.rejects(() => invoke('agent:open-in-editor', 'src/nope.ts', 1, 'vscode'));
+  assert.equal(global.__openedUrls.length, 1, 'refused paths never reach the shell');
 });
 
 test('chat mode: new session opens a new Gemini chat; follow-up must stay in the same conversation; mismatch auto-resends full context', async () => {

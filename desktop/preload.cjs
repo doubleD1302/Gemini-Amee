@@ -34,6 +34,7 @@ contextBridge.exposeInMainWorld('studio', {
     retry: () => invoke('agent:retry'),
     rotateNext: () => invoke('agent:rotate-next'),
     previous: () => invoke('agent:previous'),
+    openInEditor: (rel, line, editor) => invoke('agent:open-in-editor', rel, line, editor),
     resume: opts => invoke('agent:resume', opts),
     discardPrevious: () => invoke('agent:discard-previous'),
     cancel: () => invoke('agent:cancel'),

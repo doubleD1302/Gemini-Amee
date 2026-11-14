@@ -10,6 +10,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const { clip } = require('./agent-protocol.cjs');
+const { diffExtras } = require('./diff.cjs');
 
 const VERSION = 1;
 const MAX_STEPS = 400;
@@ -27,7 +28,10 @@ function sanitizeStep(s) {
   if (s.tool !== undefined) out.tool = str(s.tool, 40);
   if (s.label !== undefined) out.label = str(s.label, 400);
   if (s.summary !== undefined) out.summary = str(s.summary, 600);
-  if (s.diff !== undefined) out.diff = str(s.diff, 8000);
+  if (s.diff !== undefined) {
+    out.diff = str(s.diff, 8000);
+    if (out.diff) Object.assign(out, diffExtras(out.diff)); // view cạnh nhau + dòng đầu tiên được dựng lại từ diff, không tin dữ liệu lưu
+  }
   if (s.output !== undefined) out.output = str(s.output, 3000);
   if (typeof s.status === 'string' && STEP_STATUS.has(s.status)) out.status = s.status;
   if (typeof s.checkpoint === 'string') out.checkpoint = str(s.checkpoint, 80);

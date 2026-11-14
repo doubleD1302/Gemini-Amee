@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Bot, Check, ChevronDown, ChevronRight, ClipboardCopy, FilePen, FileSearch, History, LoaderCircle,
+  Bot, Check, ExternalLink, ChevronDown, ChevronRight, ClipboardCopy, FilePen, FileSearch, History, LoaderCircle,
   Play, RotateCcw, ShieldAlert, ShieldCheck, Square, TerminalSquare, Undo2, X
 } from 'lucide-react';
-import type { AgentPending, AgentState, AgentStep, CheckpointInfo, PreviousSession } from '../types';
+import type { AgentPending, AgentState, AgentStep, CheckpointInfo, DiffHunkView, PreviousSession } from '../types';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import './AgentPanel.css';
 
@@ -55,8 +55,60 @@ function errText(err: unknown): string {
   return raw.replace(/^Error invoking remote method '[^']+':\s*(Error:\s*)?/, '');
 }
 
-function DiffView({ diff }: { diff: string }) {
+type DiffMode = 'unified' | 'split';
+const EDITOR_CHOICES: { id: string; label: string }[] = [
+  { id: 'vscode', label: 'VS Code' }, { id: 'cursor', label: 'Cursor' }, { id: 'windsurf', label: 'Windsurf' },
+  { id: 'vscode-insiders', label: 'VS Code Insiders' }, { id: 'vscodium', label: 'VSCodium' }, { id: 'default', label: 'Ứng dụng mặc định' }
+];
+interface DiffPrefs { mode: DiffMode; editor: string; open: (rel: string, line?: number) => void; }
+const DiffPrefsContext = createContext<DiffPrefs>({ mode: 'unified', editor: 'vscode', open: () => undefined });
+
+function readPref(key: string, fallback: string): string {
+  try { return window.localStorage.getItem(key) || fallback; } catch { return fallback; }
+}
+function writePref(key: string, value: string) {
+  try { window.localStorage.setItem(key, value); } catch { /* bỏ qua: chỉ là tiện ích */ }
+}
+
+/** Diff cạnh nhau: cột trái = bản hiện tại, cột phải = bản sau khi sửa; có số dòng. */
+function SideBySide({ view }: { view: DiffHunkView[] }) {
+  return (
+    <div className="agent-sbs">
+      {view.map((h, hi) => (
+        <div key={hi} className="agent-sbs-hunk">
+          <div className="agent-sbs-header">{h.header}</div>
+          <table>
+            <tbody>
+              {h.rows.map((r, ri) => (
+                <tr key={ri} className={r.k}>
+                  <td className="ln">{r.l ? r.l.n : ''}</td>
+                  <td className={`cell left ${r.l ? (r.k === 'ctx' ? '' : 'del') : 'empty'}`}><pre>{r.l ? r.l.s || ' ' : ''}</pre></td>
+                  <td className="ln">{r.r ? r.r.n : ''}</td>
+                  <td className={`cell right ${r.r ? (r.k === 'ctx' ? '' : 'add') : 'empty'}`}><pre>{r.r ? r.r.s || ' ' : ''}</pre></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function OpenInEditorButton({ rel, line }: { rel: string; line?: number }) {
+  const prefs = useContext(DiffPrefsContext);
+  if (!rel) return null;
+  return (
+    <button className="agent-link" title={`Mở ${rel} trong editor tại dòng ${line || 1} (bản hiện tại trên đĩa)`} onClick={() => prefs.open(rel, line)}>
+      <ExternalLink size={11} /> Mở tại dòng {line || 1}
+    </button>
+  );
+}
+
+function DiffView({ diff, view }: { diff: string; view?: DiffHunkView[] }) {
+  const prefs = useContext(DiffPrefsContext);
   if (!diff) return null;
+  if (prefs.mode === 'split' && view && view.length) return <SideBySide view={view} />;
   return (
     <pre className="agent-diff">
       {diff.split('\n').map((line, i) => {
@@ -74,9 +126,12 @@ function DiffView({ diff }: { diff: string }) {
 function ApprovalCard({ item, busy, onDecide }: {
   item: AgentPending;
   busy: boolean;
-  onDecide: (id: string, decision: 'approve' | 'reject' | 'approve_all_edits') => void;
+  onDecide: (id: string, decision: 'approve' | 'reject' | 'approve_all_edits' | 'approve_group') => void;
 }) {
   const isExec = item.kind === 'exec';
+  const [tab, setTab] = useState<'one' | 'group'>(item.group ? 'group' : 'one');
+  const group = item.group || null;
+  const showGroup = !!group && tab === 'group';
   return (
     <div className={`agent-approval ${isExec ? 'exec' : 'edit'}`}>
       <div className="agent-approval-head">
@@ -85,11 +140,21 @@ function ApprovalCard({ item, busy, onDecide }: {
         {item.source === 'vibe' && <span className="agent-badge">từ trang Gemini</span>}
       </div>
       <code className="agent-approval-target" title={item.label}>{isExec ? '$ ' : ''}{item.label}</code>
-      {item.summary && <div className="agent-approval-summary">{item.summary}</div>}
-      {!isExec && <DiffView diff={item.diff} />}
+      {item.summary && <div className="agent-approval-summary">{showGroup && group ? group.summary : item.summary}</div>}
+      {group && (
+        <div className="agent-tabs" role="tablist">
+          <button className={tab === 'group' ? 'on' : ''} role="tab" aria-selected={tab === 'group'} onClick={() => setTab('group')}>Tổng hợp {group.count} thao tác</button>
+          <button className={tab === 'one' ? 'on' : ''} role="tab" aria-selected={tab === 'one'} onClick={() => setTab('one')}>Chỉ thao tác này</button>
+        </div>
+      )}
+      {!isExec && <DiffView diff={showGroup && group ? group.diff : item.diff} view={showGroup && group ? group.view : item.view} />}
+      {!isExec && <div className="agent-approval-tools"><OpenInEditorButton rel={item.label} line={showGroup && group ? group.line : item.line} /></div>}
       {isExec && <div className="agent-warn">Lệnh chạy với quyền của bạn trong thư mục dự án. Chỉ duyệt nếu bạn hiểu rõ lệnh này.</div>}
       <div className="agent-approval-actions">
-        <button className="agent-btn primary" disabled={busy} onClick={() => onDecide(item.id, 'approve')}><Check size={14} /> Duyệt</button>
+        <button className="agent-btn primary" disabled={busy} onClick={() => onDecide(item.id, 'approve')}><Check size={14} /> Duyệt{group ? ' thao tác này' : ''}</button>
+        {group && item.source === 'agent' && (
+          <button className="agent-btn primary" disabled={busy} title="Áp dụng tuần tự cả nhóm thao tác sửa cùng file đã xem ở tab Tổng hợp. Mỗi thao tác vẫn có checkpoint riêng để hoàn tác; lệnh terminal vẫn luôn hỏi." onClick={() => onDecide(item.id, 'approve_group')}><Check size={14} /> Duyệt cả {group.count}</button>
+        )}
         <button className="agent-btn" disabled={busy} onClick={() => onDecide(item.id, 'reject')}><X size={14} /> Từ chối</button>
         {!isExec && item.source === 'agent' && (
           <button className="agent-btn ghost" disabled={busy} title="Các lần sửa file sau sẽ tự áp dụng. Lệnh terminal vẫn luôn hỏi." onClick={() => onDecide(item.id, 'approve_all_edits')}>
@@ -132,7 +197,8 @@ function StepRow({ step }: { step: AgentStep }) {
       {step.summary && <div className="agent-step-summary">{step.summary}</div>}
       {open && (
         <div className="agent-step-detail">
-          {step.diff && <DiffView diff={step.diff} />}
+          {step.diff && <DiffView diff={step.diff} view={step.view} />}
+          {step.diff && (step.tool === 'edit_file' || step.tool === 'write_file') && <div className="agent-approval-tools"><OpenInEditorButton rel={step.label || ''} line={step.line} /></div>}
           {step.output && <pre className="agent-output">{step.output}</pre>}
           {step.text && !step.output && <pre className="agent-output">{step.text}</pre>}
         </div>
@@ -154,6 +220,8 @@ export function AgentPanel({ connected, workspaceOpen, onToast, onFilesChanged }
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [previous, setPrevious] = useState<PreviousSession | null>(null);
+  const [diffMode, setDiffMode] = useState<DiffMode>(() => (readPref('gps.diffMode', 'unified') === 'split' ? 'split' : 'unified'));
+  const [editor, setEditor] = useState<string>(() => { const v = readPref('gps.editor', 'vscode'); return EDITOR_CHOICES.some(e => e.id === v) ? v : 'vscode'; });
   const [checkpoints, setCheckpoints] = useState<CheckpointInfo[]>([]);
   const [showCheckpoints, setShowCheckpoints] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -173,6 +241,14 @@ export function AgentPanel({ connected, workspaceOpen, onToast, onFilesChanged }
     window.studio.agent.previous().then(p => { if (alive) setPrevious(p); }).catch(() => { if (alive) setPrevious(null); });
     return () => { alive = false; };
   }, [workspaceOpen, state.id]);
+
+  const openInEditor = useCallback((rel: string, line?: number) => {
+    window.studio.agent.openInEditor(rel, line || 1, editor).then(r => {
+      if (r.opened === 'none') onToast(`Không mở được file${r.error ? ': ' + r.error : ''}.`);
+      else if (r.fallback) onToast('Không mở được bằng editor đã chọn (chưa cài hoặc chưa đăng ký) → đã mở bằng ứng dụng mặc định, không tới đúng dòng.');
+    }).catch(err => onToast(errText(err)));
+  }, [editor, onToast]);
+  const prefs = useMemo<DiffPrefs>(() => ({ mode: diffMode, editor, open: openInEditor }), [diffMode, editor, openInEditor]);
 
   const refreshCheckpoints = useCallback(() => {
     window.studio.agent.checkpoints().then(setCheckpoints).catch(() => {});
@@ -195,7 +271,7 @@ export function AgentPanel({ connected, workspaceOpen, onToast, onFilesChanged }
 
   const start = () => run(async () => { await window.studio.agent.start(goal); setGoal(''); });
   const send = () => run(async () => { await window.studio.agent.reply(reply); setReply(''); });
-  const decide = (id: string, decision: 'approve' | 'reject' | 'approve_all_edits') =>
+  const decide = (id: string, decision: 'approve' | 'reject' | 'approve_all_edits' | 'approve_group') =>
     run(async () => { await window.studio.agent.approve(id, decision); if (decision !== 'reject') onFilesChanged?.(); });
   const copyPrompt = () => run(async () => {
     if (!state.jobId) return;
@@ -237,12 +313,22 @@ export function AgentPanel({ connected, workspaceOpen, onToast, onFilesChanged }
   }
 
   return (
+    <DiffPrefsContext.Provider value={prefs}>
     <div className="agent-pane">
       <div className="agent-top">
         <div className={`agent-status ${status}`}>
           {working && <LoaderCircle size={13} className="agent-spin" />}
           <span>{STATUS_LABEL[status]}</span>
           {hasRun && status !== 'idle' && <span className="agent-turn">lượt {state.turn}/{state.maxTurns}</span>}
+        </div>
+        <div className="agent-prefs">
+          <div className="agent-seg" role="group" aria-label="Kiểu hiển thị diff">
+            <button className={diffMode === 'unified' ? 'on' : ''} onClick={() => { setDiffMode('unified'); writePref('gps.diffMode', 'unified'); }} title="Diff gộp (unified)">Gộp</button>
+            <button className={diffMode === 'split' ? 'on' : ''} onClick={() => { setDiffMode('split'); writePref('gps.diffMode', 'split'); }} title="Diff cạnh nhau: trái = hiện tại, phải = sau khi sửa">Cạnh nhau</button>
+          </div>
+          <select className="agent-select" value={editor} onChange={e => { setEditor(e.target.value); writePref('gps.editor', e.target.value); }} title="Editor dùng cho nút 'Mở tại dòng N'" aria-label="Editor">
+            {EDITOR_CHOICES.map(e => <option key={e.id} value={e.id}>{e.label}</option>)}
+          </select>
         </div>
         <label className="agent-toggle" title="Khi bật, các lần sửa/tạo file tự áp dụng (vẫn hoàn tác được). Chạy lệnh terminal LUÔN cần bạn duyệt.">
           <input
@@ -366,5 +452,6 @@ export function AgentPanel({ connected, workspaceOpen, onToast, onFilesChanged }
         )}
       </div>
     </div>
+    </DiffPrefsContext.Provider>
   );
 }

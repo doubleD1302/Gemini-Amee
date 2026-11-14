@@ -13,6 +13,7 @@ const { EventEmitter } = require('node:events');
 const protocol = require('./agent-protocol.cjs');
 const projectHints = require('./project-hints.cjs');
 const { ContextMeter, Ledger } = require('./context.cjs');
+const { unifiedDiff, diffExtras } = require('./diff.cjs');
 
 const MAX_STEPS_KEPT = 200;
 const CONVERSATION_RE = /^https:\/\/gemini\.google\.com\/(?:u\/\d+\/)?app\/[A-Za-z0-9_-]+/;
@@ -76,7 +77,7 @@ class AgentRunner extends EventEmitter {
       policy: { ...this.policy },
       context: this.meter.snapshot(),
       steps: this.steps.slice(-MAX_STEPS_KEPT),
-      pending: this.pending.map(p => ({ id: p.id, tool: p.tool, label: p.label, summary: p.summary, diff: p.diff, kind: p.kind, source: p.source, createdAt: p.createdAt }))
+      pending: this.pending.map(p => ({ id: p.id, tool: p.tool, label: p.label, summary: p.summary, diff: p.diff, view: p.view, line: p.line, group: p.group || null, kind: p.kind, source: p.source, createdAt: p.createdAt }))
     };
   }
   emitState(throttle = false) {
@@ -170,7 +171,7 @@ class AgentRunner extends EventEmitter {
     return {
       savedAt: Date.now(),
       run: { id: this.run.id, goal: this.run.goal, status: this.run.status, turn: this.run.turn, conversationUrl: this.run.conversationUrl, error: this.run.error, question: this.run.question },
-      steps: this.steps.slice(-MAX_STEPS_KEPT),
+      steps: this.steps.slice(-MAX_STEPS_KEPT).map(({ view, ...rest }) => rest),
       digest: this._digest.slice(-60),
       meter: { chars: this.meter.chars, turns: this.meter.turns, chatIndex: this.meter.chatIndex, rotations: this.meter.rotations },
       ledger: this.ledger.toJSON(),
@@ -415,7 +416,10 @@ class AgentRunner extends EventEmitter {
     this._abort = new AbortController();
     const items = [];
     let finished = false, question = null, halted = false;
-    for (const call of calls) {
+    const groups = this._planEditGroups(calls, root);   // xem trước gộp nhiều edit cùng một file
+    const groupApproved = new Set();                    // file đã được duyệt theo nhóm trong tin nhắn này
+    for (let ci = 0; ci < calls.length; ci++) {
+      const call = calls[ci];
       if (this._cancelled) break;
       const tool = this.tools.TOOLS[call.tool];
       const item = { tool: call.tool || '?', status: 'ok', output: '', label: '' };
@@ -434,7 +438,7 @@ class AgentRunner extends EventEmitter {
         continue;
       }
       item.label = prep.label || '';
-      const step = this.pushStep({ type: 'tool', tool: call.tool, label: item.label, summary: prep.summary || '', diff: prep.diff || '', status: 'running' });
+      const step = this.pushStep({ type: 'tool', tool: call.tool, label: item.label, summary: prep.summary || '', diff: prep.diff || '', view: prep.view, line: prep.line, status: 'running' });
       const updateStep = patch => { Object.assign(step, patch); this.emitState(); };
 
       if (tool.kind === 'control') {
@@ -444,10 +448,13 @@ class AgentRunner extends EventEmitter {
         continue;
       }
       let go = true;
-      if (tool.kind === 'exec' || (tool.kind === 'edit' && !this.policy.autoEdits)) {
+      const preApproved = tool.kind === 'edit' && groupApproved.has(item.label);
+      if (preApproved) updateStep({ summary: `${prep.summary || ''} · đã duyệt theo nhóm` });
+      if (tool.kind === 'exec' || (tool.kind === 'edit' && !this.policy.autoEdits && !preApproved)) {
         updateStep({ status: 'waiting_approval' });
-        const decision = await this._requestApproval({ tool: call.tool, label: item.label, summary: prep.summary || '', diff: prep.diff || '', kind: tool.kind, source: 'agent', args: call.args, stepId: step.id });
+        const decision = await this._requestApproval({ tool: call.tool, label: item.label, summary: prep.summary || '', diff: prep.diff || '', view: prep.view, line: prep.line, group: groups.get(ci) || null, kind: tool.kind, source: 'agent', args: call.args, stepId: step.id });
         if (this._cancelled) break;
+        if (decision.decision === 'approve' && decision.group && groups.get(ci)) groupApproved.add(item.label);
         if (decision.decision !== 'approve') {
           item.status = 'rejected';
           item.output = `Người dùng đã TỪ CHỐI thao tác này.${decision.reason ? ' Lý do: ' + decision.reason : ''} Đừng lặp lại y nguyên; hãy đề xuất hướng khác hoặc hỏi lại người dùng.`;
@@ -483,6 +490,47 @@ class AgentRunner extends EventEmitter {
     return { items, finished, question };
   }
 
+  /**
+   * Xem trước gộp: nếu MỘT tin nhắn có ≥2 thao tác sửa (edit_file/write_file) lên cùng một file, mô phỏng tuần tự
+   * trên bản "ảo" (overlay, không ghi gì ra đĩa) để hiện diff TỔNG HỢP ngay ở lần duyệt đầu và cho phép duyệt cả nhóm.
+   * Bỏ nhóm nếu: bật tự duyệt (không cần), mô phỏng lỗi, hoặc có run_command xen giữa (lệnh có thể đổi file).
+   * run_command không bao giờ nằm trong nhóm và vẫn luôn cần duyệt riêng.
+   * @returns {Map<number, {path:string,count:number,diff:string,view:any[],line:number,summary:string}>} theo chỉ số call đầu nhóm
+   */
+  _planEditGroups(calls, root) {
+    const out = new Map();
+    if (this.policy.autoEdits) return out;
+    const toLF = t => String(t == null ? '' : t).replace(/\r\n/g, '\n');
+    const norm = p => String(p == null ? '' : p).trim().replace(/\\/g, '/').replace(/^\.\//, '');
+    const overlay = new Map();
+    const byPath = new Map();
+    const dead = new Set();
+    const execAt = [];
+    calls.forEach((call, i) => {
+      const tool = call && call.valid ? this.tools.TOOLS[call.tool] : null;
+      if (!tool) return;
+      if (tool.kind === 'exec') { execAt.push(i); return; }
+      if (tool.kind !== 'edit') return;
+      try {
+        const prep = tool.prepare({ root, overlay, checkpoints: null, source: 'agent' }, call.args);
+        overlay.set(prep.label, prep.next);
+        const g = byPath.get(prep.label) || { path: prep.label, indices: [], before: prep.before };
+        g.indices.push(i);
+        g.final = prep.next;
+        byPath.set(prep.label, g);
+      } catch { dead.add(norm(call.args && call.args.path)); }
+    });
+    for (const g of byPath.values()) {
+      if (g.indices.length < 2 || dead.has(g.path)) continue;
+      const first = g.indices[0], last = g.indices[g.indices.length - 1];
+      if (execAt.some(i => i > first && i < last)) continue;
+      const d = unifiedDiff(toLF(g.before), toLF(g.final), { label: g.path });
+      if (!d.changed) continue;
+      out.set(first, { path: g.path, count: g.indices.length, diff: d.diff, ...diffExtras(d.diff), summary: `Gộp ${g.indices.length} thao tác trên ${g.path} (+${d.added} −${d.removed})` });
+    }
+    return out;
+  }
+
   /* ---------- duyệt ---------- */
   _requestApproval(action) {
     return new Promise(resolve => {
@@ -491,22 +539,28 @@ class AgentRunner extends EventEmitter {
       this.setStatus('waiting_approval');
     });
   }
-  _settle(entry, decision, reason = '') {
+  _settle(entry, decision, reason = '', extra = {}) {
     const idx = this.pending.indexOf(entry);
     if (idx !== -1) this.pending.splice(idx, 1);
-    if (entry.resolve) entry.resolve({ decision, reason });
+    if (entry.resolve) entry.resolve({ decision, reason, ...extra });
   }
-  /** decision: 'approve' | 'reject' | 'approve_all_edits' */
+  /** decision: 'approve' | 'reject' | 'approve_all_edits' | 'approve_group' (duyệt mọi thao tác sửa cùng file đã xem trước trong tin nhắn này) */
   async approve(actionId, decision = 'approve', reason = '') {
     const entry = this.pending.find(p => p.id === actionId);
     if (!entry) throw new Error('Yêu cầu duyệt không còn tồn tại.');
+    let group = false;
+    if (decision === 'approve_group') {
+      if (entry.kind !== 'edit' || entry.source !== 'agent' || !entry.group) throw new Error('Không có nhóm thao tác sửa file để duyệt cùng lúc.');
+      group = true;
+      decision = 'approve';
+    }
     if (decision === 'approve_all_edits') {
       if (entry.kind !== 'edit') throw new Error('Chỉ tự duyệt được thao tác sửa file, không áp dụng cho chạy lệnh.');
       this.policy.autoEdits = true;
       decision = 'approve';
     }
     if (entry.source === 'agent') {
-      this._settle(entry, decision === 'approve' ? 'approve' : 'reject', reason);
+      this._settle(entry, decision === 'approve' ? 'approve' : 'reject', reason, { group });
       if (this.run.status === 'waiting_approval' && !this.pending.some(p => p.source === 'agent')) this.setStatus('running');
       else this.emitState();
       return { ok: true };
@@ -534,7 +588,7 @@ class AgentRunner extends EventEmitter {
     const args = { path: String(relPath), body: String(content) };
     const ctx = { root, checkpoints: this.checkpoints, source: 'vibe' };
     const prep = this.tools.TOOLS.write_file.prepare(ctx, args); // ném lỗi nếu đường dẫn bị chặn
-    const entry = { id: uid('act'), createdAt: Date.now(), tool: 'write_file', label: prep.label, summary: `Từ trang Gemini · ${prep.summary}`, diff: prep.diff, kind: 'edit', source: 'vibe', args, resolve: null };
+    const entry = { id: uid('act'), createdAt: Date.now(), tool: 'write_file', label: prep.label, summary: `Từ trang Gemini · ${prep.summary}`, diff: prep.diff, view: prep.view, line: prep.line, kind: 'edit', source: 'vibe', args, resolve: null };
     this.pending.push(entry);
     this.emitState();
     this.emit('attention', { id: entry.id, path: prep.label });

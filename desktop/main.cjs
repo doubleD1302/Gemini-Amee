@@ -8,6 +8,7 @@ const { Bridge, loadOrCreateState } = require('./bridge.cjs');
 const { CheckpointStore } = require('./checkpoints.cjs');
 const { AgentRunner } = require('./agent.cjs');
 const { SessionStore } = require('./sessions.cjs');
+const { openInEditor } = require('./editor.cjs');
 let bridge = null;
 let runner = null;
 let checkpoints = null;
@@ -177,6 +178,10 @@ app.whenReady().then(async () => {
   ipcMain.handle('agent:retry', () => runner.retry());
   ipcMain.handle('agent:rotate-next', () => runner.rotateNext());
   ipcMain.handle('agent:previous', () => runner.previousSession());
+  ipcMain.handle('agent:open-in-editor', (_event, rel, line, editor) => {
+    if (!currentRoot) throw new Error('Hãy mở thư mục dự án trước.');
+    return openInEditor(shell, { root: currentRoot, rel: String(rel || ''), line, editor: String(editor || 'vscode') });
+  });
   ipcMain.handle('agent:resume', (_event, opts) => runner.resume({ continueRun: !(opts && opts.continueRun === false) }));
   ipcMain.handle('agent:discard-previous', () => runner.discardPrevious());
   ipcMain.handle('agent:cancel', () => runner.cancel());

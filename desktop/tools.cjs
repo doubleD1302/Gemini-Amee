@@ -10,7 +10,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { spawn } = require('node:child_process');
 const workspace = require('./workspace.cjs');
-const { unifiedDiff } = require('./diff.cjs');
+const { unifiedDiff, diffExtras } = require('./diff.cjs');
 
 const READ_MAX_LINES = 400;
 const READ_MAX_CHARS = 24_000;
@@ -113,8 +113,9 @@ const grep = {
 };
 
 /* ---------- write_file ---------- */
-function readIfExists(root, rel) {
+function readIfExists(root, rel, overlay) {
   const { dest } = workspace.resolveWriteTarget(root, rel);
+  if (overlay && overlay.has(rel)) return { dest, existing: overlay.get(rel) }; // chỉ dùng trong prepare (xem trước nhóm edit)
   if (!fs.existsSync(dest)) return { dest, existing: null };
   const st = fs.lstatSync(dest);
   if (!st.isFile() || st.isSymbolicLink()) throw new Error('Đích không phải file thường.');
@@ -138,11 +139,11 @@ const write_file = {
   prepare(ctx, args) {
     const rel = needPath(args);
     if (typeof args.body !== 'string') throw new Error('Thiếu nội dung: đặt dòng "---" rồi nội dung file ngay bên dưới.');
-    const { existing } = readIfExists(ctx.root, rel);
+    const { existing } = readIfExists(ctx.root, rel, ctx.overlay);
     const next = finalizeNewContent(args.body, existing);
     const d = unifiedDiff(existing === null ? '' : toLF(existing), toLF(next), { label: rel });
     if (existing !== null && !d.changed) throw new Error('Nội dung giống hệt file hiện tại, không có gì để ghi.');
-    return { label: rel, summary: existing === null ? `Tạo file mới (${next.length} ký tự)` : `Ghi đè file (+${d.added} −${d.removed})`, diff: d.diff, created: existing === null };
+    return { label: rel, summary: existing === null ? `Tạo file mới (${next.length} ký tự)` : `Ghi đè file (+${d.added} −${d.removed})`, diff: d.diff, ...diffExtras(d.diff), created: existing === null, before: existing, next };
   },
   async run(ctx, args) {
     const rel = needPath(args);
@@ -198,12 +199,12 @@ function applyOne(text, edit, replaceAll) {
   const hint = first.trim() ? ` Dòng đầu của SEARCH: "${first.trim().slice(0, 80)}". Hãy read_file lại để lấy đúng nội dung hiện tại.` : '';
   throw new Error('Không tìm thấy đoạn SEARCH trong file.' + hint);
 }
-function computeEdit(root, args) {
+function computeEdit(root, args, overlay) {
   const rel = needPath(args);
   if (!Array.isArray(args.edits) || !args.edits.length) {
     throw new Error('Thiếu khối <<<<<<< SEARCH / ======= / >>>>>>> REPLACE.');
   }
-  const { existing } = readIfExists(root, rel);
+  const { existing } = readIfExists(root, rel, overlay);
   if (existing === null) throw new Error(`File "${rel}" không tồn tại. Dùng write_file để tạo mới.`);
   const eol = eolOf(existing);
   let text = toLF(existing);
@@ -221,10 +222,10 @@ const edit_file = {
   description: 'Sửa file bằng một hoặc nhiều khối SEARCH/REPLACE (đoạn SEARCH phải khớp duy nhất trong file). Cần người dùng duyệt.',
   usage: 'tool: edit_file\npath: src/a.ts\n<<<<<<< SEARCH\nđoạn cũ nguyên văn\n=======\nđoạn mới\n>>>>>>> REPLACE\n(có thể lặp nhiều khối; thêm dòng "replace_all: true" ở header nếu muốn thay mọi chỗ khớp)',
   prepare(ctx, args) {
-    const { rel, existing, next, replaced } = computeEdit(ctx.root, args);
+    const { rel, existing, next, replaced } = computeEdit(ctx.root, args, ctx.overlay);
     const d = unifiedDiff(toLF(existing), toLF(next), { label: rel });
     if (!d.changed) throw new Error('Sau khi áp dụng, nội dung không đổi.');
-    return { label: rel, summary: `Sửa ${replaced} chỗ (+${d.added} −${d.removed})`, diff: d.diff };
+    return { label: rel, summary: `Sửa ${replaced} chỗ (+${d.added} −${d.removed})`, diff: d.diff, ...diffExtras(d.diff), before: existing, next };
   },
   async run(ctx, args) {
     const { rel, next } = computeEdit(ctx.root, args);
