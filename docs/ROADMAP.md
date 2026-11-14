@@ -21,7 +21,7 @@ Mỗi mục có tiêu chí nghiệm thu; thêm test cho mỗi mục.
 3. **[XONG] Quy tắc & kỹ năng theo project** (`.gps/rules.md`, `.gps/skills/*.md`) được nạp vào system prompt; có UI sửa.
 4. **[XONG] Git tích hợp**: xem status/diff, tạo commit theo đề xuất (commit luôn cần duyệt; không push tự động).
 5. **[XONG] Chỉ mục tìm kiếm ngữ nghĩa nhẹ** (BM25/ký hiệu đoạn mã) để chọn ngữ cảnh tốt hơn mà không cần embedding ngoài.
-6. **Terminal tương tác có duyệt** (tiến trình chạy lâu, xem log trực tiếp, dừng được).
+6. **[XONG] Terminal tương tác có duyệt** (tiến trình chạy lâu, xem log trực tiếp, dừng được).
 7. Đóng gói/ký ứng dụng, tự cập nhật, trang cài đặt (cổng, giới hạn file/ký tự, thư mục checkpoint).
 
 ## Không làm

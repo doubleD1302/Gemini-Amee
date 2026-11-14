@@ -343,6 +343,87 @@ const plan = {
   async run(ctx, args) { const p = buildPlan(args); return { output: p.output, plan: p.items }; }
 };
 
+/* ---------- tiến trình nền / terminal tương tác (start & send LUÔN cần duyệt) ---------- */
+function needTerminal(ctx) {
+  if (!ctx.terminal) throw new Error('Terminal chưa được bật trong ứng dụng này.');
+  return ctx.terminal;
+}
+function fmtProc(p) {
+  return `${p.id} [${p.status}${p.exitCode != null ? ` exit ${p.exitCode}` : ''}] ${p.name} — ${p.command}`;
+}
+const process_start = {
+  name: 'process_start', kind: 'exec',
+  description: 'Khởi động một tiến trình CHẠY LÂU ở nền (dev server, watcher, REPL...) trong thư mục gốc dự án; trả về id và đầu ra ban đầu. LUÔN cần người dùng duyệt. Dùng process_logs để xem log, process_send để gõ input, process_stop để dừng. Với lệnh chạy xong nhanh hãy dùng run_command.',
+  usage: 'tool: process_start\ncommand: npm run dev\nname: dev server        (tuỳ chọn)\nwait_sec: 3             (tuỳ chọn, 0-30: chờ đầu ra ban đầu)',
+  prepare(ctx, args) {
+    const command = String(args.command || args.body || '').trim();
+    if (!command) throw new Error('Thiếu tham số "command".');
+    if (command.length > 1000) throw new Error('Lệnh quá dài.');
+    const t = needTerminal(ctx);
+    if (t.list().filter(p => p.status === 'running').length >= 4) throw new Error('Đang có 4 tiến trình chạy; hãy process_stop bớt một tiến trình trước.');
+    return { label: command.slice(0, 200), summary: `Tiến trình nền trong ${path.basename(ctx.root)} (chạy tới khi bạn/agent dừng hoặc đóng ứng dụng)` };
+  },
+  async run(ctx, args) {
+    const t = needTerminal(ctx);
+    const command = String(args.command || args.body || '').trim();
+    const info = t.start(ctx.root, command, { name: args.name, source: 'agent' });
+    await t.waitForOutput(info.id, int(args.wait_sec, 3, 0, 30) * 1000);
+    const r = t.read(info.id, { tail: 4000 });
+    return { output: `OK: đã khởi động ${fmtProc(r)}\nVị trí log tiếp theo: since=${r.to}\n--- đầu ra ban đầu ---\n${r.text || '(chưa có output)'}`, ok: true, exitCode: 0 };
+  }
+};
+const process_logs = {
+  name: 'process_logs', kind: 'read',
+  description: 'Xem log/trạng thái của tiến trình nền (bỏ id để liệt kê tất cả). since: lấy phần log mới từ vị trí đã nhận lần trước (do process_start/process_logs báo). Chỉ đọc.',
+  usage: 'tool: process_logs\nid: p1             (tuỳ chọn)\nsince: 1234        (tuỳ chọn)\ntail: 4000         (tuỳ chọn, 100-20000)',
+  prepare(ctx, args) { return { label: String(args.id || 'tất cả').trim().slice(0, 40) }; },
+  async run(ctx, args) {
+    const t = needTerminal(ctx);
+    const id = String(args.id || '').trim();
+    if (!id) {
+      const list = t.list();
+      return { output: list.length ? list.map(fmtProc).join('\n') : 'Chưa có tiến trình nào.' };
+    }
+    const r = t.read(id, { since: args.since === undefined || args.since === '' ? null : args.since, tail: int(args.tail, 4000, 100, 20000) });
+    return { output: `${fmtProc(r)}\nVị trí log tiếp theo: since=${r.to}${r.lost ? ' (một phần log ở giữa đã bị bỏ do giới hạn bộ đệm)' : ''}\n--- log ---\n${r.text || '(không có output mới)'}` };
+  }
+};
+const process_send = {
+  name: 'process_send', kind: 'exec',
+  description: 'Gửi một dòng input vào stdin của tiến trình nền đang chạy (ví dụ trả lời prompt, lệnh trong REPL). LUÔN cần người dùng duyệt.',
+  usage: 'tool: process_send\nid: p1\n---\nnội dung gửi (thêm xuống dòng ở cuối)',
+  prepare(ctx, args) {
+    const t = needTerminal(ctx);
+    const id = String(args.id || '').trim();
+    const p = t.list().find(x => x.id === id);
+    if (!p) throw new Error(`Không có tiến trình "${id}".`);
+    if (p.status !== 'running') throw new Error(`Tiến trình ${id} đã kết thúc.`);
+    const input = String(args.body == null ? '' : args.body);
+    if (!input.length) throw new Error('Thiếu nội dung để gửi (đặt dòng "---" rồi nội dung bên dưới).');
+    if (input.length > 4000) throw new Error('Input quá dài (tối đa 4000 ký tự).');
+    return { label: `${id} ← ${input.replace(/\s+/g, ' ').slice(0, 120)}`, summary: `Gửi input vào stdin của ${fmtProc(p)}` };
+  },
+  async run(ctx, args) {
+    const t = needTerminal(ctx);
+    const id = String(args.id || '').trim();
+    t.send(id, String(args.body), { newline: true });
+    await t.waitForOutput(id, 1500);
+    const r = t.read(id, { tail: 3000 });
+    return { output: `OK: đã gửi input vào ${id}\nVị trí log tiếp theo: since=${r.to}\n--- log gần nhất ---\n${r.text || '(chưa có output)'}`, ok: true, exitCode: 0 };
+  }
+};
+const process_stop = {
+  name: 'process_stop', kind: 'read',
+  description: 'Dừng một tiến trình nền do ứng dụng đã khởi động (chỉ các id do process_start/Terminal tạo ra).',
+  usage: 'tool: process_stop\nid: p1',
+  prepare(ctx, args) { if (!String(args.id || '').trim()) throw new Error('Thiếu tham số "id".'); return { label: String(args.id).trim().slice(0, 40) }; },
+  async run(ctx, args) {
+    const t = needTerminal(ctx);
+    const p = t.stop(String(args.id).trim());
+    return { output: `Đã yêu cầu dừng ${fmtProc(p)}` };
+  }
+};
+
 /* ---------- git (xem: status/diff tự chạy; commit LUÔN cần duyệt) ---------- */
 function commitPaths(args) {
   return String(args.body || '').split('\n').map(s => s.trim()).filter(Boolean);
@@ -388,7 +469,7 @@ const git_commit = {
     return { output: `OK: đã commit ${r.hash} — ${r.summary} (${r.files} đường dẫn)`, exitCode: 0, ok: true };
   }
 };
-const TOOLS = { read_file, list_dir, grep, search_code, write_file, edit_file, run_command, git_status, git_diff, git_commit, plan, finish, ask_user };
+const TOOLS = { read_file, list_dir, grep, search_code, write_file, edit_file, run_command, process_start, process_logs, process_send, process_stop, git_status, git_diff, git_commit, plan, finish, ask_user };
 const specs = () => Object.values(TOOLS).map(t => ({ name: t.name, description: t.description, usage: t.usage }));
 
 module.exports = { TOOLS, specs, bool, computeEdit, unifiedDiff };

@@ -7,6 +7,7 @@ import type { AgentAttachment, AgentPending, AgentPlan, AgentPlanStatus, AgentSt
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { RulesPanel } from './RulesPanel';
 import { GitPanel } from './GitPanel';
+import { TerminalPanel } from './TerminalPanel';
 import './AgentPanel.css';
 
 const EMPTY: AgentState = {
@@ -535,6 +536,7 @@ export function AgentPanel({ connected, workspaceOpen, onToast, onFilesChanged }
           </div>
         )}
       </div>
+      <TerminalPanel />
       <GitPanel onToast={onToast} />
       <RulesPanel onToast={onToast} />
     </div>

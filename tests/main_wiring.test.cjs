@@ -54,7 +54,7 @@ const jobUpdates = id => sent.filter(s => s.ch === 'studio:job' && s.payload.id 
 
 test('boots, registers every IPC channel, persists token/port for stable pairing', async () => {
   await boot();
-  for (const ch of ['studio:init', 'studio:choose-folder', 'studio:read-file', 'studio:write-file', 'studio:search', 'studio:prepare', 'studio:send', 'studio:import-reply', 'agent:state', 'agent:start', 'agent:reply', 'agent:retry', 'agent:rotate-next', 'agent:previous', 'agent:open-in-editor', 'agent:resume', 'agent:discard-previous', 'git:status', 'git:diff', 'git:commit', 'rules:get', 'rules:save', 'rules:save-skill', 'rules:delete-skill', 'rules:trust', 'rules:revoke', 'agent:attach', 'agent:detach', 'agent:cancel', 'agent:approve', 'agent:set-policy', 'agent:job-prompt', 'agent:checkpoints', 'agent:undo']) assert(handlers.has(ch), ch);
+  for (const ch of ['studio:init', 'studio:choose-folder', 'studio:read-file', 'studio:write-file', 'studio:search', 'studio:prepare', 'studio:send', 'studio:import-reply', 'agent:state', 'agent:start', 'agent:reply', 'agent:retry', 'agent:rotate-next', 'agent:previous', 'agent:open-in-editor', 'agent:resume', 'agent:discard-previous', 'term:list', 'term:start', 'term:read', 'term:send', 'term:stop', 'term:stop-all', 'git:status', 'git:diff', 'git:commit', 'rules:get', 'rules:save', 'rules:save-skill', 'rules:delete-skill', 'rules:trust', 'rules:revoke', 'agent:attach', 'agent:detach', 'agent:cancel', 'agent:approve', 'agent:set-policy', 'agent:job-prompt', 'agent:checkpoints', 'agent:undo']) assert(handlers.has(ch), ch);
   assert.match(bridgeInfo.token, /^[0-9a-f]{64}$/);
   const saved = JSON.parse(fs.readFileSync(path.join(userData, 'bridge-state.json'), 'utf8'));
   assert.equal(saved.token, bridgeInfo.token);
@@ -231,4 +231,26 @@ test('git over IPC: status/diff are read-only; a commit needs the native confirm
     assert.deepEqual(G('show', '--name-only', '--format=', 'HEAD').split(/\r?\n/).filter(Boolean), ['src/app.ts']);
     assert.deepEqual((await invoke('git:status')).files.map(f => f.path), ['src/extra.ts']);
   } finally { electronStub.dialog.showMessageBox = async () => ({ response: 0 }); }
+});
+
+test('terminal over IPC: user-started background process, log reads, input, stop; switching project stops everything', async () => {
+  const echo = `node -e "console.log('ready');process.stdin.on('data',d=>console.log('echo:'+String(d).trim()))"`;
+  const p = await invoke('term:start', echo, 'demo');
+  assert.equal(p.status, 'running');
+  assert.equal(p.source, 'user');
+  for (let i = 0; i < 100 && !(await invoke('term:read', p.id)).text.includes('ready'); i++) await sleep(50);
+  const first = await invoke('term:read', p.id);
+  assert.match(first.text, /ready/);
+  await invoke('term:send', p.id, 'xin chào');
+  for (let i = 0; i < 100 && !(await invoke('term:read', p.id, first.to)).text.includes('echo:xin chào'); i++) await sleep(50);
+  assert.match((await invoke('term:read', p.id, first.to)).text, /echo:xin chào/);
+  assert.equal((await invoke('term:list')).length >= 1, true);
+  assert(sent.some(s => s.ch === 'studio:terminal'), 'renderer receives live terminal updates');
+  await assert.rejects(async () => invoke('term:read', 'p9999'), /Không có tiến trình/);
+  await assert.rejects(async () => invoke('term:start', '   '), /Thiếu lệnh/);
+  // đổi project → mọi tiến trình nền bị dừng
+  await invoke('studio:choose-folder');
+  for (let i = 0; i < 200 && (await invoke('term:list')).some(x => x.status === 'running'); i++) await sleep(50);
+  assert.equal((await invoke('term:list')).some(x => x.status === 'running'), false);
+  await sleep(1500);   // Windows: để taskkill nhả thư mục làm việc trước khi test dọn dẹp
 });

@@ -37,6 +37,7 @@ class AgentRunner extends EventEmitter {
     this.getRoot = deps.getRoot;
     this.maxTurns = deps.maxTurns || 25;
     this.detectChecks = deps.detectChecks || null; // tuỳ chọn, để test ghi đè
+    this.terminal = deps.terminal || null;         // TerminalManager (tuỳ chọn): tiến trình nền; start/send luôn cần duyệt
     this.rules = deps.rules || null;               // RulesStore (tuỳ chọn): quy tắc/kỹ năng .gps đã được người dùng duyệt
     this.sessions = deps.sessions || null;         // SessionStore (tuỳ chọn): lưu bền phiên theo project, NGOÀI project
     this._runRoot = null;
@@ -472,7 +473,7 @@ class AgentRunner extends EventEmitter {
       if (!call.valid) { item.status = 'error'; item.output = call.error || 'Khối tool không hợp lệ.'; halted = true; this.pushStep({ type: 'tool', tool: item.tool, status: 'error', label: '', text: item.output }); continue; }
       if (!tool) { item.status = 'error'; item.output = `Tool "${call.tool}" không tồn tại. Các tool có sẵn: ${Object.keys(this.tools.TOOLS).join(', ')}.`; this.pushStep({ type: 'tool', tool: item.tool, status: 'error', text: item.output }); continue; }
       if (halted && tool.kind !== 'read' && tool.kind !== 'control') { item.status = 'skipped'; item.output = 'Bỏ qua vì một bước trước đó trong cùng tin nhắn đã lỗi. Hãy xử lý lỗi rồi gửi lại.'; continue; }
-      const ctx = { root, checkpoints: this.checkpoints, signal: this._abort.signal, source: 'agent' };
+      const ctx = { root, checkpoints: this.checkpoints, signal: this._abort.signal, source: 'agent', terminal: this.terminal };
       let prep;
       try { prep = await tool.prepare(ctx, call.args); }
       catch (err) {

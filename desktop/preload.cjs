@@ -27,6 +27,19 @@ contextBridge.exposeInMainWorld('studio', {
     ipcRenderer.on('studio:connection',listener);
     return () => ipcRenderer.removeListener('studio:connection',listener);
   },
+  terminal: {
+    list: () => invoke('term:list'),
+    start: (command, name) => invoke('term:start', command, name),
+    read: (id, since, tail) => invoke('term:read', id, since, tail),
+    send: (id, input) => invoke('term:send', id, input),
+    stop: id => invoke('term:stop', id),
+    stopAll: () => invoke('term:stop-all'),
+    onUpdate: callback => {
+      const listener = (_event, list) => callback(list);
+      ipcRenderer.on('studio:terminal', listener);
+      return () => ipcRenderer.removeListener('studio:terminal', listener);
+    }
+  },
   git: {
     status: () => invoke('git:status'),
     diff: (path, staged) => invoke('git:diff', path, staged),

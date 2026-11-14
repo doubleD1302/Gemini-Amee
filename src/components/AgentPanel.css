@@ -169,3 +169,10 @@
 .agent-git-name { margin-left: 0; flex: 1; min-width: 0; text-align: left; text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .agent-git-name code { font-family: var(--font-mono, monospace); font-size: 11.5px; color: var(--text-main, #f1f5f9); }
 .agent-git-label { color: var(--text-dim, #64748b); font-size: 10.5px; white-space: nowrap; }
+
+/* Terminal tiến trình nền (Giai đoạn 3, mục 6) */
+.agent-term-input { flex: 1; min-width: 0; background: var(--bg-input, #0a0e18); color: var(--text-main, #f1f5f9); border: 1px solid var(--border-medium, rgba(255,255,255,.12)); border-radius: 8px; padding: 6px 9px; font: inherit; font-family: var(--font-mono, monospace); }
+.agent-term-proc { display: flex; align-items: center; gap: 8px; padding: 4px 6px; border-radius: 7px; border: 1px solid transparent; }
+.agent-term-proc.sel { border-color: rgba(129,140,248,.45); background: rgba(99,102,241,.08); }
+.agent-term-name { margin-left: 0; flex: 1; min-width: 0; text-align: left; text-decoration: none; color: var(--text-main, #f1f5f9); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.agent-term-log { max-height: 240px; min-height: 80px; }

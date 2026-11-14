@@ -11,10 +11,12 @@ const { SessionStore } = require('./sessions.cjs');
 const { openInEditor } = require('./editor.cjs');
 const { RulesStore } = require('./project-rules.cjs');
 const git = require('./git.cjs');
+const { TerminalManager } = require('./terminal.cjs');
 let bridge = null;
 let runner = null;
 let checkpoints = null;
 let rulesStore = null;
+let terminal = null;
 let mainWindow = null;
 let currentRoot = null;
 let lastChatUrl = null;          // cuộc trò chuyện Gemini đang dùng cho chế độ chat
@@ -80,7 +82,9 @@ app.whenReady().then(async () => {
   await bridge.start();
   checkpoints = new CheckpointStore(path.join(userData, 'checkpoints'));
   rulesStore = new RulesStore(path.join(userData, 'rules'));
-  runner = new AgentRunner({ bridge, workspace, tools, checkpoints, getRoot: () => currentRoot, sessions: new SessionStore(path.join(userData, 'sessions')), rules: rulesStore });
+  terminal = new TerminalManager();
+  terminal.on('update', list => send('studio:terminal', list));
+  runner = new AgentRunner({ bridge, workspace, tools, checkpoints, getRoot: () => currentRoot, sessions: new SessionStore(path.join(userData, 'sessions')), rules: rulesStore, terminal });
   bridge.on('job', job => {
     if (job.kind === 'chat') {
       const m = job.conversationUrl && CONV_RE.exec(job.conversationUrl);
@@ -113,6 +117,7 @@ app.whenReady().then(async () => {
     const result = await dialog.showOpenDialog(mainWindow, { properties: ['openDirectory'], title:'Select project folder' });
     if (result.canceled || !result.filePaths[0]) return null;
     if (runner) runner.cancel();
+    if (terminal) terminal.stopAll();   // tiến trình nền thuộc project cũ không được mồ côi
     currentRoot = result.filePaths[0];
     workspace.clearScanCache();
     return currentIndex();
@@ -182,6 +187,13 @@ app.whenReady().then(async () => {
   ipcMain.handle('rules:delete-skill', (_event, name) => rulesStore.deleteSkill(requireWorkspace(), String(name || '')));
   ipcMain.handle('rules:trust', (_event, hash) => rulesStore.trust(requireWorkspace(), String(hash || '')));
   ipcMain.handle('rules:revoke', () => rulesStore.revoke(requireWorkspace()));
+  // ----- Terminal (tiến trình nền): người dùng tự bấm = tự duyệt; agent phải qua thẻ duyệt (process_start/process_send) -----
+  ipcMain.handle('term:list', () => terminal.list());
+  ipcMain.handle('term:start', (_event, command, name) => terminal.start(requireWorkspace(), String(command || ''), { name: String(name || ''), source: 'user' }));
+  ipcMain.handle('term:read', (_event, id, since, tail) => terminal.read(String(id), { since: since === undefined ? null : since, tail }));
+  ipcMain.handle('term:send', (_event, id, input) => terminal.send(String(id), String(input == null ? '' : input), { newline: true }));
+  ipcMain.handle('term:stop', (_event, id) => terminal.stop(String(id)));
+  ipcMain.handle('term:stop-all', () => { terminal.stopAll(); return true; });
   // ----- Git: xem status/diff; commit cần xác nhận bằng hộp thoại hệ thống (không push) -----
   ipcMain.handle('git:status', () => git.status(requireWorkspace()));
   ipcMain.handle('git:diff', (_event, rel, staged) => git.diff(requireWorkspace(), { path: String(rel || ''), staged: !!staged }));
@@ -224,4 +236,4 @@ app.whenReady().then(async () => {
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length===0) createWindow(); });
 });
 app.on('window-all-closed', () => { if(process.platform!=='darwin') app.quit(); });
-app.on('before-quit', () => { if (runner) runner.dispose(); if (bridge) bridge.stop().catch(()=>{}); });
+app.on('before-quit', () => { if (terminal) terminal.dispose(); if (runner) runner.dispose(); if (bridge) bridge.stop().catch(()=>{}); });

@@ -87,6 +87,17 @@ export interface AgentApi {
   undo(id: string, force?: boolean): Promise<CheckpointInfo>;
   onState(fn: (state: AgentState) => void): () => void;
 }
+export interface TermProc { id: string; name: string; command: string; source: 'user'|'agent'; status: 'running'|'exited'|'stopped'; exitCode: number|null; startedAt: number; endedAt: number; total: number; dropped: number; }
+export interface TermRead extends TermProc { text: string; from: number; to: number; lost: boolean; }
+export interface TerminalApi {
+  list(): Promise<TermProc[]>;
+  start(command: string, name?: string): Promise<TermProc>;
+  read(id: string, since?: number, tail?: number): Promise<TermRead>;
+  send(id: string, input: string): Promise<{ id: string; sent: number }>;
+  stop(id: string): Promise<TermProc>;
+  stopAll(): Promise<boolean>;
+  onUpdate(fn: (list: TermProc[]) => void): () => void;
+}
 export interface GitFile { path: string; origPath: string|null; xy: string; untracked: boolean; conflict: boolean; staged: boolean; unstaged: boolean; label: string; blocked: boolean; }
 export interface GitStatus { repo: boolean; reason?: string; branch: string; detached: boolean; ahead: number; behind: number; noCommits: boolean; files: GitFile[]; outside: number; truncated?: boolean; prefix?: string; }
 export interface GitApi {
@@ -125,6 +136,7 @@ export interface StudioApi {
   agent: AgentApi;
   rules: RulesApi;
   git: GitApi;
+  terminal: TerminalApi;
   onJob(fn:(job:Job)=>void):()=>void;
   onConnection(fn:(conn:BridgeConnection)=>void):()=>void;
   onFileWritten?(fn:(data:{path:string})=>void):()=>void;
