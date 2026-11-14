@@ -2,7 +2,7 @@
 
 A **separate Electron + React coding assistant** for your own projects, using **Gemini Web** in normal Chrome via an opt-in extension. It does **not** call the Gemini API, use Google login cookies, bypass account limits, or require an API key.
 
-> **Trạng thái (0.2.0):** Đã có **chế độ Agent** kiểu Antigravity chạy qua Gemini Web (vòng lặp đọc → sửa → chạy lệnh, có duyệt từng bước, hoàn tác). Logic lõi được test bằng Node (115 test, dùng Gemini giả). Bộ chọn DOM đã được chẩn đoán trên Gemini Web thật (giao diện tiếng Việt, 2026-11-14) nhưng **luồng gửi/nhận tự động end-to-end và cửa sổ Electron thật chưa được chạy** — selector có thể vỡ khi Gemini đổi giao diện; dùng nút "Kiểm tra bộ chọn" trên HUD để chẩn đoán. Luôn có đường dự phòng copy/paste thủ công.
+> **Trạng thái (0.2.0):** Đã có **chế độ Agent** kiểu Antigravity chạy qua Gemini Web (vòng lặp đọc → sửa → chạy lệnh, có duyệt từng bước, hoàn tác). Logic lõi được test bằng Node (125 test, dùng Gemini giả). Bộ chọn DOM đã được chẩn đoán trên Gemini Web thật (giao diện tiếng Việt, 2026-11-14) nhưng **luồng gửi/nhận tự động end-to-end và cửa sổ Electron thật chưa được chạy** — selector có thể vỡ khi Gemini đổi giao diện; dùng nút "Kiểm tra bộ chọn" trên HUD để chẩn đoán. Luôn có đường dự phòng copy/paste thủ công.
 
 ## Chế độ Agent (mới)
 
@@ -72,7 +72,7 @@ Gemini Web does not provide a public, stable browser-agent API. The extension lo
 ## Development and tests
 
 ```powershell
-npm run test       # 115 test Node: workspace, bridge, giao thức/công cụ agent, vòng lặp e2e với Gemini giả, md.js, lịch sử
+npm run test       # 125 test Node: workspace, bridge, giao thức/công cụ agent, vòng lặp e2e với Gemini giả, md.js, lịch sử
 npm run typecheck  # TypeScript checks after npm install
 npm run build      # production Vite renderer
 npm run start      # launch Electron with dist/ after building
@@ -101,7 +101,7 @@ tests/           No-dependency Node.js tests
 ## Current MVP limitations / next milestones
 
 - The Gemini Web composer and response selectors are not a stable API. Auto-send/auto-capture must be verified on your current Gemini version.
-- Chưa có: đính kèm ảnh, đếm token, truy xuất ngữ nghĩa/embedding, tool song song, tự chạy test không cần duyệt (agent chỉ được gợi ý lệnh test của project, mỗi lệnh vẫn cần bạn duyệt). Xem `docs/ROADMAP.md`.
+- Chưa có: đính kèm ảnh, đếm token chính xác (chỉ có ước lượng thô ~3,5 ký tự/token), truy xuất ngữ nghĩa/embedding, tool song song, tự chạy test không cần duyệt (agent chỉ được gợi ý lệnh test của project, mỗi lệnh vẫn cần bạn duyệt). Xem `docs/ROADMAP.md`.
 - Only the selected files are included inline. Gemini has no guarantee of fully comprehending a large codebase based on one snapshot.
 - For users who prefer a supported official interface and predictable behavior, Gemini API or Gemini CLI is a more maintainable long-term option, but those are distinct from Gemini Web.
 

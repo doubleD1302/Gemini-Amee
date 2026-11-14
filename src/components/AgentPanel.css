@@ -78,3 +78,15 @@
 
 .agent-spin { animation: agent-spin 1s linear infinite; }
 @keyframes agent-spin { to { transform: rotate(360deg); } }
+
+/* Ước lượng ngữ cảnh (mục 3) */
+.agent-context { padding: 6px 12px 8px; font-size: 11px; color: var(--text-muted, #94a3b8); border-bottom: 1px solid var(--border, rgba(148,163,184,.15)); }
+.agent-context-line { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+.agent-context-rot { color: var(--text-dim, #64748b); }
+.agent-link { margin-left: auto; background: none; border: 0; padding: 0; color: #818cf8; cursor: pointer; font-size: 11px; text-decoration: underline; }
+.agent-link:disabled { color: var(--text-dim, #64748b); cursor: default; text-decoration: none; }
+.agent-context-bar { height: 4px; margin-top: 5px; border-radius: 2px; background: rgba(148,163,184,.18); overflow: hidden; }
+.agent-context-fill { height: 100%; border-radius: 2px; transition: width .3s ease; }
+.agent-context-fill.low { background: #10b981; }
+.agent-context-fill.mid { background: #f59e0b; }
+.agent-context-fill.high { background: #ef4444; }

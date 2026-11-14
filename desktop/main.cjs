@@ -174,6 +174,7 @@ app.whenReady().then(async () => {
   ipcMain.handle('agent:start', (_event, goal) => runner.start(goal));
   ipcMain.handle('agent:reply', (_event, text) => runner.reply(text));
   ipcMain.handle('agent:retry', () => runner.retry());
+  ipcMain.handle('agent:rotate-next', () => runner.rotateNext());
   ipcMain.handle('agent:cancel', () => runner.cancel());
   ipcMain.handle('agent:approve', (_event, id, decision, reason) => runner.approve(String(id), String(decision), String(reason || '')));
   ipcMain.handle('agent:set-policy', (_event, policy) => runner.setPolicy(policy));

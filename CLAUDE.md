@@ -8,6 +8,7 @@ Giao tiếp và UI bằng **tiếng Việt**. Không có API key Gemini; không 
 - `desktop/bridge.cjs` – HTTP 127.0.0.1:47821 (token lưu bền). Job queue + watchdog (requeue 1 lần → timeout), cancel, completeManually. `/v1/write-file` chỉ tạo **đề xuất**.
 - `desktop/agent.cjs` – `AgentRunner`: vòng lặp tối đa 25 lượt, retry định dạng ≤2, duyệt từng bước, policy `{autoEdits}`.
 - `desktop/agent-protocol.cjs` – parse/format khối gps-tool, system prompt, kickoff, recap.
+- `desktop/context.cjs` – `ContextMeter` (ước lượng ký tự/token của chat Gemini hiện tại; ngân sách mặc định 240k ký tự CHƯA kiểm chứng với giới hạn thật) và `Ledger` (sổ tiến độ do ỨNG DỤNG ghi từ các tool đã chạy: file đã sửa, lệnh, việc còn dở). Agent tự mở chat mới kèm recap khi vượt ngân sách (`deps.contextBudgetChars`) hoặc khi người dùng bấm "Chat mới ở lượt sau".
 - `desktop/project-hints.cjs` – suy ra lệnh test/lint/typecheck/build từ package.json (+Cargo/go/pytest) để GỢI Ý trong system prompt; không chép thân script (dữ liệu không tin cậy).
 - `desktop/tools.cjs` – read_file/list_dir/grep/write_file/edit_file/run_command/finish/ask_user (`prepare` không side-effect, `run` thực thi).
 - `desktop/workspace.cjs` – truy cập file an toàn (realpath, ghi nguyên tử, .gitignore, chấm điểm ngữ cảnh).
@@ -17,7 +18,7 @@ Giao tiếp và UI bằng **tiếng Việt**. Không có API key Gemini; không 
 
 ## Lệnh
 ```
-npm test                 # node --test tests/*.test.cjs  (115 test; KHÔNG dùng `node --test tests/`)
+npm test                 # node --test tests/*.test.cjs  (125 test; KHÔNG dùng `node --test tests/`)
 npx tsc --noEmit         # strict, phải exit 0
 npx vite build
 npm run package:win      # build bản Windows (cap-nhat-extension.bat chép từ release/win-unpacked)

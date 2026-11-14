@@ -32,6 +32,7 @@ contextBridge.exposeInMainWorld('studio', {
     start: goal => invoke('agent:start', goal),
     reply: text => invoke('agent:reply', text),
     retry: () => invoke('agent:retry'),
+    rotateNext: () => invoke('agent:rotate-next'),
     cancel: () => invoke('agent:cancel'),
     approve: (id, decision, reason) => invoke('agent:approve', id, decision, reason),
     setPolicy: policy => invoke('agent:set-policy', policy),

@@ -9,8 +9,30 @@ import './AgentPanel.css';
 
 const EMPTY: AgentState = {
   id: null, goal: '', status: 'idle', turn: 0, maxTurns: 25, conversationUrl: null, jobId: null,
-  liveText: '', error: '', question: '', policy: { autoEdits: false }, steps: [], pending: []
+  liveText: '', error: '', question: '', policy: { autoEdits: false },
+  context: { chars: 0, tokens: 0, budgetChars: 240000, budgetTokens: 68572, ratio: 0, chatIndex: 0, rotations: 0, turnsInChat: 0, rotateRequested: false },
+  steps: [], pending: []
 };
+
+const fmt = (n: number) => (n >= 10000 ? `${(n / 1000).toFixed(0)}k` : n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n));
+
+/** Ước lượng ngữ cảnh đã dùng trong cuộc trò chuyện Gemini hiện tại (không phải số token thật). */
+function ContextMeterBar({ context: c, canRotate, onRotate }: { context: AgentState['context']; canRotate: boolean; onRotate: () => void }) {
+  const pct = Math.round(c.ratio * 100);
+  const level = c.ratio >= 0.85 ? 'high' : c.ratio >= 0.6 ? 'mid' : 'low';
+  return (
+    <div className="agent-context" title={`Ước lượng thô (~3,5 ký tự/token). Khi gần tới ngân sách ${fmt(c.budgetChars)} ký tự, Agent tự mở chat Gemini mới kèm bản tóm tắt tiến độ.`}>
+      <div className="agent-context-line">
+        <span>Ngữ cảnh chat #{c.chatIndex}: ~{fmt(c.tokens)} token ({fmt(c.chars)} ký tự) · {pct}% ngân sách ước lượng</span>
+        {c.rotations > 0 && <span className="agent-context-rot">đã chuyển chat {c.rotations} lần</span>}
+        <button className="agent-link" disabled={!canRotate || c.rotateRequested} onClick={onRotate} title="Lần gửi kế tiếp sẽ mở chat Gemini mới kèm bản tóm tắt">
+          {c.rotateRequested ? 'Sẽ mở chat mới ở lượt sau ✓' : 'Chat mới ở lượt sau'}
+        </button>
+      </div>
+      <div className="agent-context-bar"><div className={`agent-context-fill ${level}`} style={{ width: `${Math.max(2, pct)}%` }} /></div>
+    </div>
+  );
+}
 
 const STATUS_LABEL: Record<AgentState['status'], string> = {
   idle: 'Sẵn sàng',
@@ -219,6 +241,13 @@ export function AgentPanel({ connected, workspaceOpen, onToast, onFilesChanged }
           <span>Tự duyệt sửa file</span>
         </label>
       </div>
+      {hasRun && state.context.chatIndex > 0 && (
+        <ContextMeterBar
+          context={state.context}
+          canRotate={status !== 'running' && status !== 'waiting_approval'}
+          onRotate={() => { void window.studio.agent.rotateNext().then(setState).catch(() => undefined); }}
+        />
+      )}
       {state.policy.autoEdits && (
         <div className="agent-note"><ShieldCheck size={13} /> Sửa file tự áp dụng. Lệnh terminal vẫn luôn hỏi bạn.</div>
       )}

@@ -39,10 +39,15 @@ export interface AgentStep {
   checkpoint?: string;
 }
 export interface AgentPending { id: string; tool: string; label: string; summary: string; diff: string; kind: 'edit'|'exec'; source: 'agent'|'vibe'; createdAt: number; }
+export interface AgentContext {
+  chars: number; tokens: number; budgetChars: number; budgetTokens: number; ratio: number;
+  chatIndex: number; rotations: number; turnsInChat: number; rotateRequested: boolean;
+}
 export interface AgentState {
   id: string|null; goal: string; status: AgentStatus; turn: number; maxTurns: number;
   conversationUrl: string|null; jobId: string|null; liveText: string; error: string; question: string;
   policy: { autoEdits: boolean };
+  context: AgentContext;
   steps: AgentStep[]; pending: AgentPending[];
 }
 export interface CheckpointInfo { id: string; path: string; created: boolean; at: number; source: string; note: string; undone: boolean; }
@@ -51,6 +56,7 @@ export interface AgentApi {
   start(goal: string): Promise<AgentState>;
   reply(text: string): Promise<AgentState>;
   retry(): Promise<AgentState>;
+  rotateNext(): Promise<AgentState>;
   cancel(): Promise<AgentState>;
   approve(id: string, decision: 'approve'|'reject'|'approve_all_edits', reason?: string): Promise<{ ok: boolean }>;
   setPolicy(policy: { autoEdits: boolean }): Promise<{ autoEdits: boolean }>;

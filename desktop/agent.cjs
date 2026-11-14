@@ -12,6 +12,7 @@ const fs = require('node:fs');
 const { EventEmitter } = require('node:events');
 const protocol = require('./agent-protocol.cjs');
 const projectHints = require('./project-hints.cjs');
+const { ContextMeter, Ledger } = require('./context.cjs');
 
 const MAX_STEPS_KEPT = 200;
 const CONVERSATION_RE = /^https:\/\/gemini\.google\.com\/(?:u\/\d+\/)?app\/[A-Za-z0-9_-]+/;
@@ -34,6 +35,8 @@ class AgentRunner extends EventEmitter {
     this.maxTurns = deps.maxTurns || 25;
     this.detectChecks = deps.detectChecks || null; // tuỳ chọn, để test ghi đè
     this.policy = { autoEdits: false };
+    this.meter = new ContextMeter(deps.contextBudgetChars || undefined);
+    this.ledger = new Ledger();
     this.steps = [];
     this.pending = [];
     this._digest = [];
@@ -61,6 +64,7 @@ class AgentRunner extends EventEmitter {
       ...this.run,
       maxTurns: this.maxTurns,
       policy: { ...this.policy },
+      context: this.meter.snapshot(),
       steps: this.steps.slice(-MAX_STEPS_KEPT),
       pending: this.pending.map(p => ({ id: p.id, tool: p.tool, label: p.label, summary: p.summary, diff: p.diff, kind: p.kind, source: p.source, createdAt: p.createdAt }))
     };
@@ -119,10 +123,28 @@ class AgentRunner extends EventEmitter {
       kind: 'agent', newChat, expectConversation: newChat ? null : this.run.conversationUrl
     });
     this.run.jobId = job.id;
+    if (newChat) this.meter.startChat(prompt.length); else this.meter.addSent(prompt.length);
     this.setStatus('running');
-    return this._waitFor(job.id);
+    const result = await this._waitFor(job.id);
+    if (result && result.answer) this.meter.addReceived(String(result.answer).length);
+    this.emitState();
+    return result;
   }
 
+  /** Bản tóm tắt để mở chat Gemini mới: mục tiêu + sổ tiến độ do ứng dụng ghi + việc cần xử lý ngay. */
+  _buildRecap(followUp, reason) {
+    return protocol.buildRecap({
+      systemPrompt: this._systemPrompt, goal: this.run.goal, steps: this._digest,
+      ledgerText: this.ledger.render(), followUp, maxFollowUp: 24000, reason
+    });
+  }
+  /** Người dùng yêu cầu: lần gửi kế tiếp sẽ mở chat Gemini mới kèm bản tóm tắt. */
+  rotateNext() {
+    if (!this.run.id) throw new Error('Chưa có phiên agent.');
+    this.meter.rotateRequested = true;
+    this.emitState();
+    return this.snapshot();
+  }
   /* ---------- API công khai ---------- */
   start(goal) {
     if (this._running) throw new Error('Agent đang chạy. Hãy dừng phiên hiện tại trước.');
@@ -141,6 +163,8 @@ class AgentRunner extends EventEmitter {
     this.steps = [];
     this.pending = keepPending;
     this._digest = [];
+    this.ledger.clear();
+    this.meter.resetAll();
     const systemPrompt = this._systemPrompt;
     this._resetRun();
     this._systemPrompt = systemPrompt;
@@ -162,6 +186,7 @@ class AgentRunner extends EventEmitter {
     this._cancelled = false;
     this.run.error = '';
     this.pushStep({ type: 'user', text: t });
+    this.ledger.recordUser(t);
     this._loop(`Tin nhắn mới từ người dùng:\n${t}`, { newChat: false });
     return this.snapshot();
   }
@@ -203,6 +228,19 @@ class AgentRunner extends EventEmitter {
           this.run.turn = 0;
           return;
         }
+        // Hội thoại Gemini quá dài (hoặc người dùng yêu cầu): chuyển sang chat mới kèm bản tóm tắt TRƯỚC khi gửi.
+        if (!opts.newChat && this.meter.shouldRotate(prompt.length)) {
+          const m = this.meter.snapshot();
+          const manual = this.meter.rotateRequested;
+          this.pushStep({ type: 'info', text: manual
+            ? 'Theo yêu cầu của bạn → chuyển sang chat Gemini mới kèm bản tóm tắt tiến độ.'
+            : `Hội thoại Gemini đã dài (~${m.chars.toLocaleString('vi-VN')} ký tự ≈ ${m.tokens.toLocaleString('vi-VN')} token, ngân sách ${m.budgetChars.toLocaleString('vi-VN')}) → chuyển sang chat mới kèm bản tóm tắt tiến độ.` });
+          prompt = this._buildRecap(prompt, 'cuộc trò chuyện trước đã quá dài nên được chuyển sang chat mới');
+          opts = { newChat: true };
+          this.run.conversationUrl = null;
+          this.meter.rotations++;
+          this.meter.rotateRequested = false;
+        }
         this.run.turn++;
         const job = await this._sendAndWait(prompt, opts);
         if (this._cancelled || job.status === 'cancelled') return;
@@ -210,7 +248,7 @@ class AgentRunner extends EventEmitter {
           if (job.code === 'conversation_mismatch' && mismatchRetries < 1) {
             mismatchRetries++;
             this.pushStep({ type: 'info', text: 'Tab Gemini đang ở cuộc trò chuyện khác → mở chat mới và gửi lại bản tóm tắt tiến độ.' });
-            prompt = protocol.buildRecap({ systemPrompt: this._systemPrompt, goal: this.run.goal, steps: this._digest, followUp: prompt.length < 4000 ? prompt : '' });
+            prompt = this._buildRecap(prompt, 'cuộc trò chuyện trước bị mất');
             opts = { newChat: true };
             this.run.conversationUrl = null;
             continue;
@@ -221,7 +259,7 @@ class AgentRunner extends EventEmitter {
         }
         const { calls, text } = protocol.parseToolCalls(job.answer || '');
         this.run.liveText = '';
-        if (text) this.pushStep({ type: 'assistant', text: clip(text, 6000) });
+        if (text) { this.pushStep({ type: 'assistant', text: clip(text, 6000) }); this.ledger.recordNote(text); }
         if (!calls.length) {
           const looksLikeAttempt = /gps-tool|(^|\n)\s*tool:\s*[a-z_]+/i.test(job.answer || '');
           if (looksLikeAttempt && formatRetries < 2) {
@@ -296,6 +334,7 @@ class AgentRunner extends EventEmitter {
           item.output = `Người dùng đã TỪ CHỐI thao tác này.${decision.reason ? ' Lý do: ' + decision.reason : ''} Đừng lặp lại y nguyên; hãy đề xuất hướng khác hoặc hỏi lại người dùng.`;
           updateStep({ status: 'rejected' });
           this._digest.push(`${call.tool} ${item.label} → bị từ chối`);
+          this.ledger.recordRejected(`${call.tool} ${item.label}${decision.reason ? ' (lý do: ' + clip(decision.reason, 120) + ')' : ''}`);
           halted = true;
           go = false;
         }
@@ -311,6 +350,10 @@ class AgentRunner extends EventEmitter {
         this._digest.push(`${call.tool} ${item.label} → ${ok ? 'ok' : 'thất bại'}`);
         if (res.checkpoint) this.emit('checkpoint', res.checkpoint);
         if (res.path && tool.kind === 'edit') this.emit('file-written', { path: res.path });
+        // Sổ tiến độ do ứng dụng ghi: chỉ ghi khi tool THỰC SỰ chạy xong.
+        if (ok && tool.kind === 'edit') this.ledger.recordEdit(res.path || item.label, call.tool, !!prep.created);
+        else if (tool.kind === 'exec') this.ledger.recordCommand(item.label, ok, res.exitCode, res.output);
+        else if (ok && call.tool === 'read_file') this.ledger.recordRead(item.label);
         if (!ok && (tool.kind === 'exec')) { /* lệnh lỗi không dừng các bước sau; mô hình tự quyết */ }
       } catch (err) {
         item.status = 'error'; item.output = err.message || String(err); halted = true;

@@ -192,15 +192,19 @@ function buildKickoff({ systemPrompt, goal }) {
 }
 
 /** Dựng lại ngữ cảnh khi phải mở chat Gemini mới giữa chừng. */
-function buildRecap({ systemPrompt, goal, steps, followUp }) {
+function buildRecap({ systemPrompt, goal, steps, followUp, ledgerText, maxFollowUp = 4000, reason }) {
   const log = steps.slice(-14).map(s => `- ${s}`).join('\n') || '- (chưa có)';
+  const why = reason || 'cuộc trò chuyện trước bị mất hoặc đã chuyển sang chat mới';
+  const follow = String(followUp || '');
   return [
     systemPrompt,
     `## NHIỆM VỤ CỦA NGƯỜI DÙNG\n${String(goal).trim()}`,
-    '## TIẾN ĐỘ ĐÃ LÀM (cuộc trò chuyện trước bị mất, đây là bản tóm tắt)',
-    log,
-    followUp ? `## TIN NHẮN MỚI\n${followUp}` : '',
-    'Hãy tiếp tục từ trạng thái hiện tại; đọc lại file cần thiết bằng tool trước khi sửa.'
+    `## TIẾN ĐỘ ĐÃ LÀM (${why}; đây là bản tóm tắt do ỨNG DỤNG ghi, bạn không còn thấy hội thoại cũ)`,
+    ledgerText || '',
+    `### Nhật ký các bước gần nhất\n${log}`,
+    follow && follow.length <= maxFollowUp ? `## VIỆC CẦN XỬ LÝ NGAY (tin nhắn/kết quả tool chưa được bạn thấy)\n${follow}` : '',
+    follow && follow.length > maxFollowUp ? `## VIỆC CẦN XỬ LÝ NGAY (tin nhắn/kết quả tool chưa được bạn thấy; đã cắt bớt)\n${clip(follow, maxFollowUp)}` : '',
+    'Hãy tiếp tục từ trạng thái hiện tại để hoàn thành NHIỆM VỤ. File đã sửa nêu ở trên đã nằm trên đĩa; đọc lại file cần thiết bằng tool trước khi sửa tiếp, không sửa lại những gì đã xong.'
   ].filter(Boolean).join('\n\n');
 }
 
