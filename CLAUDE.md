@@ -17,7 +17,7 @@ Giao tiếp và UI bằng **tiếng Việt**. Không có API key Gemini; không 
 
 ## Lệnh
 ```
-npm test                 # node --test tests/*.test.cjs  (112 test; KHÔNG dùng `node --test tests/`)
+npm test                 # node --test tests/*.test.cjs  (115 test; KHÔNG dùng `node --test tests/`)
 npx tsc --noEmit         # strict, phải exit 0
 npx vite build
 npm run package:win      # build bản Windows (cap-nhat-extension.bat chép từ release/win-unpacked)
@@ -39,6 +39,6 @@ npm run package:win      # build bản Windows (cap-nhat-extension.bat chép t�
 6. Không đóng gói node_modules; không đọc .env/khóa/credential.
 
 ## Chưa kiểm chứng (đừng giả định)
-- Bộ chọn DOM Gemini trong `extension/content.js` chưa chạy trên Gemini thật.
+- Bộ chọn DOM (`extension/selectors.js`) ĐÃ được chẩn đoán trên Gemini Web thật ngày 2026-11-14 (Chrome 158, giao diện tiếng Việt, tab /app): composer, nút Gửi, nút Dừng, khối trả lời, khối code, chat mới đều khớp; cấu trúc code-block đã đối chiếu với md.js (test 'REAL Gemini DOM'). CHƯA chạy: luồng thật điền prompt vào Quill → bấm Gửi → chờ/bắt trả lời, giao diện tiếng Anh/ngôn ngữ khác, Gemini cho tài khoản/tính năng khác. Nút Gửi và nút Dừng là CÙNG một nút (đổi nhãn) — không bao giờ coi nút nhãn dừng/ngừng là nút Gửi; UI của extension (#gps-bridge-hud…) luôn bị loại khỏi tìm kiếm.
 - Giao diện Electron chưa chạy thật (chỉ tsc + vite build + smoke test Electron giả).
 - Tự động hóa UI Gemini có rủi ro ToS/dễ vỡ; luôn giữ đường copy/paste thủ công.

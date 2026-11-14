@@ -6,7 +6,7 @@ Giao thức gps-tool, vòng lặp agent, duyệt + diff, checkpoint/undo, bridge
 ## Giai đoạn 2 — Trải nghiệm & độ tin cậy
 Mỗi mục có tiêu chí nghiệm thu; thêm test cho mỗi mục.
 
-1. **Xác minh DOM Gemini thật.** Thêm chế độ chẩn đoán trong extension (nút "Kiểm tra bộ chọn" ghi ra HUD: composer, nút gửi, khối trả lời, nút New chat tìm được hay không). Tách toàn bộ selector ra một bảng `SELECTORS` có nhiều ứng viên dự phòng. *Nghiệm thu:* test với DOM giả cho từng ứng viên; HUD báo rõ selector nào thất bại.
+1. **[XONG phần selector; còn kiểm thử luồng gửi thật] Xác minh DOM Gemini thật.** Thêm chế độ chẩn đoán trong extension (nút "Kiểm tra bộ chọn" ghi ra HUD: composer, nút gửi, khối trả lời, nút New chat tìm được hay không). Tách toàn bộ selector ra một bảng `SELECTORS` có nhiều ứng viên dự phòng. *Nghiệm thu:* test với DOM giả cho từng ứng viên; HUD báo rõ selector nào thất bại.
 2. **[XONG] Tự động chạy test/lint sau khi sửa.** Tool `run_command` giữ nguyên luôn-duyệt; thêm gợi ý "chạy lệnh test của project" (đọc `package.json` scripts) vào kickoff. *Nghiệm thu:* test e2e agent sửa file → chạy lệnh (giả) → thấy kết quả.
 3. **Quản lý ngữ cảnh dài.** Khi hội thoại Gemini dài, tóm tắt lịch sử bước (recap) và chuyển sang chat mới có chủ đích trước khi chạm giới hạn; hiển thị ước lượng ký tự/token đã dùng trong tab Agent. *Nghiệm thu:* test recap giữ nguyên mục tiêu + file đã sửa + việc còn lại.
 4. **Phiên Agent lưu bền.** Lưu timeline/checkpoint theo project qua các lần mở app; nút "Tiếp tục phiên trước". *Nghiệm thu:* khởi động lại runner khôi phục state, các approval đang chờ bị đánh dấu hết hạn.
