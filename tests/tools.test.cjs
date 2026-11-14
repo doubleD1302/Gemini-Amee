@@ -107,5 +107,5 @@ test('run_command captures output/exit code, times out, and can be aborted',asyn
   assert.throws(()=>TOOLS.run_command.prepare(ctx,{}),/command/);
 });
 test('tool kinds: only reads auto-run; edits and commands require approval',()=>{
-  assert.deepEqual(Object.fromEntries(Object.values(TOOLS).map(t=>[t.name,t.kind])),{read_file:'read',list_dir:'read',grep:'read',search_code:'read',write_file:'edit',edit_file:'edit',run_command:'exec',process_start:'exec',process_logs:'read',process_send:'exec',process_stop:'read',git_status:'read',git_diff:'read',git_commit:'exec',plan:'control',finish:'control',ask_user:'control'});
+  assert.deepEqual(Object.fromEntries(Object.values(TOOLS).map(t=>[t.name,t.kind])),{read_file:'read',list_dir:'read',grep:'read',search_code:'read',write_file:'edit',edit_file:'edit',run_command:'exec',process_start:'exec',process_logs:'read',process_send:'exec',process_stop:'read',preview_open:'exec',preview_screenshot:'exec',git_status:'read',git_diff:'read',git_commit:'exec',plan:'control',finish:'control',ask_user:'control'});
 });

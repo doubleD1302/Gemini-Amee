@@ -54,7 +54,7 @@ const jobUpdates = id => sent.filter(s => s.ch === 'studio:job' && s.payload.id 
 
 test('boots, registers every IPC channel, persists token/port for stable pairing', async () => {
   await boot();
-  for (const ch of ['studio:init', 'studio:choose-folder', 'studio:read-file', 'studio:write-file', 'studio:search', 'studio:prepare', 'studio:send', 'studio:import-reply', 'agent:state', 'agent:start', 'agent:reply', 'agent:retry', 'agent:rotate-next', 'agent:previous', 'agent:open-in-editor', 'agent:resume', 'agent:discard-previous', 'term:list', 'term:start', 'term:read', 'term:send', 'term:stop', 'term:stop-all', 'git:status', 'git:diff', 'git:commit', 'rules:get', 'rules:save', 'rules:save-skill', 'rules:delete-skill', 'rules:trust', 'rules:revoke', 'agent:sessions', 'agent:new-session', 'agent:close-session', 'agent:attach', 'agent:detach', 'agent:cancel', 'agent:approve', 'agent:set-policy', 'agent:job-prompt', 'agent:checkpoints', 'agent:undo']) assert(handlers.has(ch), ch);
+  for (const ch of ['studio:init', 'studio:choose-folder', 'studio:read-file', 'studio:write-file', 'studio:search', 'studio:prepare', 'studio:send', 'studio:import-reply', 'agent:state', 'agent:start', 'agent:reply', 'agent:retry', 'agent:rotate-next', 'agent:previous', 'agent:open-in-editor', 'agent:resume', 'agent:discard-previous', 'preview:status', 'preview:open', 'preview:close', 'preview:capture-attach', 'term:list', 'term:start', 'term:read', 'term:send', 'term:stop', 'term:stop-all', 'git:status', 'git:diff', 'git:commit', 'rules:get', 'rules:save', 'rules:save-skill', 'rules:delete-skill', 'rules:trust', 'rules:revoke', 'agent:sessions', 'agent:new-session', 'agent:close-session', 'agent:attach', 'agent:detach', 'agent:cancel', 'agent:approve', 'agent:set-policy', 'agent:job-prompt', 'agent:checkpoints', 'agent:undo']) assert(handlers.has(ch), ch);
   assert.match(bridgeInfo.token, /^[0-9a-f]{64}$/);
   const saved = JSON.parse(fs.readFileSync(path.join(userData, 'bridge-state.json'), 'utf8'));
   assert.equal(saved.token, bridgeInfo.token);
@@ -279,4 +279,13 @@ test('parallel sessions over IPC: separate runners, sessionId on every state eve
   // đổi project → phiên song song thuộc project cũ bị bỏ
   await invoke('studio:choose-folder');
   assert.deepEqual((await invoke('agent:sessions')).map(s => s.id), ['main']);
+});
+
+test('web preview over IPC: invalid or non-local URLs are refused before any window exists; capture needs an open page', async () => {
+  assert.deepEqual(await invoke('preview:status'), { open: false, url: '' });
+  await assert.rejects(async () => invoke('preview:open', 'https://evil.com'), /Chỉ xem trước được trang chạy trên máy này/);
+  await assert.rejects(async () => invoke('preview:open', 'file:///etc/passwd'), /Chỉ hỗ trợ http/);
+  await assert.rejects(async () => invoke('preview:capture-attach', 'main'), /Chưa mở trang xem trước/);
+  assert.equal((await invoke('agent:state')).attachments.length, 0);
+  assert.deepEqual(await invoke('preview:close'), { open: false, url: '' });
 });

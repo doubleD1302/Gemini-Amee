@@ -55,6 +55,17 @@ contextBridge.exposeInMainWorld('studio', {
     ipcRenderer.on('studio:connection',listener);
     return () => ipcRenderer.removeListener('studio:connection',listener);
   },
+  preview: {
+    status: () => invoke('preview:status'),
+    open: url => invoke('preview:open', url),
+    close: () => invoke('preview:close'),
+    captureAttach: sid => invoke('preview:capture-attach', sid),
+    onChange: callback => {
+      const listener = (_event, st) => callback(st);
+      ipcRenderer.on('studio:preview', listener);
+      return () => ipcRenderer.removeListener('studio:preview', listener);
+    }
+  },
   terminal: {
     list: () => invoke('term:list'),
     start: (command, name) => invoke('term:start', command, name),

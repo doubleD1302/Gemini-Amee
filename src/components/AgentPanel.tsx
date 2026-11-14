@@ -8,6 +8,7 @@ import { MarkdownRenderer } from './MarkdownRenderer';
 import { RulesPanel } from './RulesPanel';
 import { GitPanel } from './GitPanel';
 import { TerminalPanel } from './TerminalPanel';
+import { PreviewPanel } from './PreviewPanel';
 import './AgentPanel.css';
 
 const EMPTY: AgentState = {
@@ -539,6 +540,7 @@ export function AgentPanel({ sessionId = 'main', connected, workspaceOpen, onToa
           </div>
         )}
       </div>
+      <PreviewPanel sessionId={sessionId} onToast={onToast} />
       <TerminalPanel />
       <GitPanel onToast={onToast} />
       <RulesPanel onToast={onToast} />

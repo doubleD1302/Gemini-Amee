@@ -195,7 +195,8 @@ test('e2e: if the extension cannot attach the image, nothing is sent silently; "
   await until(env.runner, s => s.status === 'done');
   assert.equal(env.turns.length, 2);
   assert.equal(env.turns[1].images.length, 0, 'retry sends the text only');
-  assert.equal(env.turns[1].prompt, env.turns[0].prompt);
+  assert.ok(env.turns[1].prompt.startsWith(env.turns[0].prompt), 'same prompt…');
+  assert.match(env.turns[1].prompt, /ảnh đính kèm KHÔNG gửi được[\s\S]*đừng mô tả hay đoán/, '…plus a note telling the model it did not get the image');
   env.runner.dispose();
 });
 

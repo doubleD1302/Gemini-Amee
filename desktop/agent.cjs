@@ -39,6 +39,7 @@ class AgentRunner extends EventEmitter {
     this.detectChecks = deps.detectChecks || null; // tuỳ chọn, để test ghi đè
     this.slot = deps.slot || '';                   // '' = phiên chính; 's2','s3'... = phiên song song (lưu bền riêng)
     this.isMulti = deps.isMulti || (() => false);  // true khi có >1 phiên: extension được phép tự chuyển sang đúng cuộc trò chuyện
+    this.preview = deps.preview || null;           // WebPreview (tuỳ chọn): xem trước localhost + chụp màn hình; luôn cần duyệt
     this.terminal = deps.terminal || null;         // TerminalManager (tuỳ chọn): tiến trình nền; start/send luôn cần duyệt
     this.rules = deps.rules || null;               // RulesStore (tuỳ chọn): quy tắc/kỹ năng .gps đã được người dùng duyệt
     this.sessions = deps.sessions || null;         // SessionStore (tuỳ chọn): lưu bền phiên theo project, NGOÀI project
@@ -419,6 +420,7 @@ class AgentRunner extends EventEmitter {
           }
           if (job.code === 'attachment_failed' && this._lastPrompt) {
             this._lastPrompt.attachments = [];   // "Thử lại" sẽ gửi chỉ phần chữ
+            this._lastPrompt.prompt += '\n\n[LƯU Ý CỦA ỨNG DỤNG: ảnh đính kèm KHÔNG gửi được tới bạn. Bạn không nhìn thấy ảnh; đừng mô tả hay đoán nội dung ảnh.]';
             this.pushStep({ type: 'info', text: 'Không đính kèm được ảnh vào Gemini (cơ chế tải ảnh lên chưa được kiểm chứng trên mọi giao diện). Bấm "Thử lại" để gửi chỉ phần chữ, hoặc sao chép prompt và đính kèm ảnh thủ công trong tab Gemini.' });
           }
           this.pushStep({ type: 'error', text: job.answer || 'Lỗi không rõ khi làm việc với Gemini.' });
@@ -447,7 +449,7 @@ class AgentRunner extends EventEmitter {
         if (outcome.finished) { this.setStatus('done', { question: '' }); return; }
         if (outcome.question !== null) { this.setStatus('waiting_user', { question: outcome.question }); return; }
         prompt = protocol.formatToolResults(outcome.items);
-        opts = { newChat: false };
+        opts = { newChat: false, attachments: outcome.images && outcome.images.length ? outcome.images : undefined };
       }
     } catch (err) {
       this.pushStep({ type: 'error', text: `Lỗi nội bộ: ${err && err.message ? err.message : err}` });
@@ -464,6 +466,7 @@ class AgentRunner extends EventEmitter {
     this._abort = new AbortController();
     const items = [];
     let finished = false, question = null, halted = false;
+    const images = [];   // ảnh do tool tạo ra (vd. chụp xem trước) → đính kèm vào tin nhắn kế tiếp
     const groups = this._planEditGroups(calls, root);   // xem trước gộp nhiều edit cùng một file
     const groupApproved = new Set();                    // file đã được duyệt theo nhóm trong tin nhắn này
     for (let ci = 0; ci < calls.length; ci++) {
@@ -476,7 +479,7 @@ class AgentRunner extends EventEmitter {
       if (!call.valid) { item.status = 'error'; item.output = call.error || 'Khối tool không hợp lệ.'; halted = true; this.pushStep({ type: 'tool', tool: item.tool, status: 'error', label: '', text: item.output }); continue; }
       if (!tool) { item.status = 'error'; item.output = `Tool "${call.tool}" không tồn tại. Các tool có sẵn: ${Object.keys(this.tools.TOOLS).join(', ')}.`; this.pushStep({ type: 'tool', tool: item.tool, status: 'error', text: item.output }); continue; }
       if (halted && tool.kind !== 'read' && tool.kind !== 'control') { item.status = 'skipped'; item.output = 'Bỏ qua vì một bước trước đó trong cùng tin nhắn đã lỗi. Hãy xử lý lỗi rồi gửi lại.'; continue; }
-      const ctx = { root, checkpoints: this.checkpoints, signal: this._abort.signal, source: 'agent', terminal: this.terminal };
+      const ctx = { root, checkpoints: this.checkpoints, signal: this._abort.signal, source: 'agent', terminal: this.terminal, preview: this.preview };
       let prep;
       try { prep = await tool.prepare(ctx, call.args); }
       catch (err) {
@@ -530,6 +533,10 @@ class AgentRunner extends EventEmitter {
         updateStep({ status: 'running' });
         const res = await tool.run(ctx, call.args);
         item.output = res.output;
+        if (res.attach && images.length < 3) {
+          try { images.push(...attachmentsLib.imagePayload([attachmentsLib.normalize(res.attach, [])])); }
+          catch (err) { item.output += `\n(Không đính kèm được ảnh: ${err.message})`; }
+        }
         const ok = res.ok !== false;
         item.status = ok ? 'ok' : 'failed';
         updateStep({ status: ok ? 'done' : 'failed', output: clip(res.output, 3000), checkpoint: res.checkpoint || undefined });
@@ -547,7 +554,7 @@ class AgentRunner extends EventEmitter {
         this._digest.push(`${call.tool} ${item.label} → lỗi: ${clip(item.output, 120)}`);
       }
     }
-    return { items, finished, question };
+    return { items, finished, question, images };
   }
 
   /**

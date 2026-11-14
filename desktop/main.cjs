@@ -12,6 +12,7 @@ const { openInEditor } = require('./editor.cjs');
 const { RulesStore } = require('./project-rules.cjs');
 const git = require('./git.cjs');
 const { TerminalManager } = require('./terminal.cjs');
+const { WebPreview } = require('./web-preview.cjs');
 let bridge = null;
 let runner = null;            // phiên chính ('main')
 let sessionStore = null;
@@ -20,6 +21,7 @@ const EXTRA_SLOTS = ['s2', 's3'];
 let checkpoints = null;
 let rulesStore = null;
 let terminal = null;
+let preview = null;
 let mainWindow = null;
 let currentRoot = null;
 let lastChatUrl = null;          // cuộc trò chuyện Gemini đang dùng cho chế độ chat
@@ -51,7 +53,7 @@ function listSessions() {
 }
 function makeRunner(slot) {
   const sid = slot || 'main';
-  const r = new AgentRunner({ bridge, workspace, tools, checkpoints, getRoot: () => currentRoot, sessions: sessionStore, rules: rulesStore, terminal, slot, isMulti: () => runners.size > 1 });
+  const r = new AgentRunner({ bridge, workspace, tools, checkpoints, getRoot: () => currentRoot, sessions: sessionStore, rules: rulesStore, terminal, preview, slot, isMulti: () => runners.size > 1 });
   r.on('state', snapshot => { send('studio:agent', { ...snapshot, sessionId: sid }); if (runners.size > 1) send('studio:sessions', listSessions()); });
   r.on('file-written', data => { workspace.clearScanCache(); send('studio:file-written', data); });
   r.on('attention', () => { if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isFocused()) mainWindow.flashFrame(true); });
@@ -114,6 +116,7 @@ app.whenReady().then(async () => {
   await bridge.start();
   checkpoints = new CheckpointStore(path.join(userData, 'checkpoints'));
   rulesStore = new RulesStore(path.join(userData, 'rules'));
+  preview = new WebPreview({ createWindow: opts => new BrowserWindow(opts), onChange: st => send('studio:preview', st) });
   terminal = new TerminalManager();
   terminal.on('update', list => send('studio:terminal', list));
   sessionStore = new SessionStore(path.join(userData, 'sessions'));
@@ -149,6 +152,7 @@ app.whenReady().then(async () => {
     for (const r of runners.values()) r.cancel();
     dropExtraSessions();   // phiên song song thuộc project cũ
     if (terminal) terminal.stopAll();   // tiến trình nền thuộc project cũ không được mồ côi
+    if (preview) preview.close();
     currentRoot = result.filePaths[0];
     workspace.clearScanCache();
     return currentIndex();
@@ -218,6 +222,15 @@ app.whenReady().then(async () => {
   ipcMain.handle('rules:delete-skill', (_event, name) => rulesStore.deleteSkill(requireWorkspace(), String(name || '')));
   ipcMain.handle('rules:trust', (_event, hash) => rulesStore.trust(requireWorkspace(), String(hash || '')));
   ipcMain.handle('rules:revoke', () => rulesStore.revoke(requireWorkspace()));
+  // ----- Xem trước web (chỉ localhost). Mở/chụp do người dùng bấm; agent phải qua thẻ duyệt (preview_open/preview_screenshot) -----
+  ipcMain.handle('preview:status', () => preview.status());
+  ipcMain.handle('preview:open', (_event, url) => preview.open(String(url || '')));
+  ipcMain.handle('preview:close', () => { preview.close(); return preview.status(); });
+  ipcMain.handle('preview:capture-attach', async (_event, sid) => {
+    const shot = await preview.capture();
+    const info = R(sid).attach('xem-truoc.png', shot.png.toString('base64'));   // vào hàng đính kèm; chỉ rời máy khi bạn gửi tin nhắn
+    return { ...info, width: shot.width, height: shot.height, url: shot.url };
+  });
   // ----- Terminal (tiến trình nền): người dùng tự bấm = tự duyệt; agent phải qua thẻ duyệt (process_start/process_send) -----
   ipcMain.handle('term:list', () => terminal.list());
   ipcMain.handle('term:start', (_event, command, name) => terminal.start(requireWorkspace(), String(command || ''), { name: String(name || ''), source: 'user' }));
@@ -284,4 +297,4 @@ app.whenReady().then(async () => {
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length===0) createWindow(); });
 });
 app.on('window-all-closed', () => { if(process.platform!=='darwin') app.quit(); });
-app.on('before-quit', () => { if (terminal) terminal.dispose(); for (const r of runners.values()) r.dispose(); if (bridge) bridge.stop().catch(()=>{}); });
+app.on('before-quit', () => { if (preview) preview.close(); if (terminal) terminal.dispose(); for (const r of runners.values()) r.dispose(); if (bridge) bridge.stop().catch(()=>{}); });

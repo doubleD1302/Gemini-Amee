@@ -95,6 +95,14 @@ export interface AgentApi {
   undo(id: string, force?: boolean): Promise<CheckpointInfo>;
   onState(fn: (state: AgentState) => void): () => void;
 }
+export interface PreviewStatus { open: boolean; url: string; }
+export interface PreviewApi {
+  status(): Promise<PreviewStatus>;
+  open(url: string): Promise<PreviewStatus>;
+  close(): Promise<PreviewStatus>;
+  captureAttach(sessionId?: string): Promise<AgentAttachment & { width: number; height: number; url: string }>;
+  onChange(fn: (st: PreviewStatus) => void): () => void;
+}
 export interface TermProc { id: string; name: string; command: string; source: 'user'|'agent'; status: 'running'|'exited'|'stopped'; exitCode: number|null; startedAt: number; endedAt: number; total: number; dropped: number; }
 export interface TermRead extends TermProc { text: string; from: number; to: number; lost: boolean; }
 export interface TerminalApi {
@@ -147,6 +155,7 @@ export interface StudioApi {
   rules: RulesApi;
   git: GitApi;
   terminal: TerminalApi;
+  preview: PreviewApi;
   onJob(fn:(job:Job)=>void):()=>void;
   onConnection(fn:(conn:BridgeConnection)=>void):()=>void;
   onFileWritten?(fn:(data:{path:string})=>void):()=>void;

@@ -13,6 +13,7 @@ const workspace = require('./workspace.cjs');
 const { unifiedDiff, diffExtras } = require('./diff.cjs');
 const { parsePlanBody, MAX_ITEMS } = require('./plan.cjs');
 const git = require('./git.cjs');
+const { validateUrl } = require('./web-preview.cjs');
 
 const READ_MAX_LINES = 400;
 const READ_MAX_CHARS = 24_000;
@@ -424,6 +425,44 @@ const process_stop = {
   }
 };
 
+/* ---------- xem trước web (mở trang + chụp màn hình: LUÔN cần duyệt) ---------- */
+function needPreview(ctx) {
+  if (!ctx.preview) throw new Error('Xem trước web chưa được bật trong ứng dụng này.');
+  return ctx.preview;
+}
+const preview_open = {
+  name: 'preview_open', kind: 'exec',
+  description: 'Mở trang web của dự án (chỉ localhost/127.0.0.1, ví dụ dev server đã chạy bằng process_start) trong cửa sổ xem trước của Studio. LUÔN cần người dùng duyệt.',
+  usage: 'tool: preview_open\nurl: http://localhost:5173',
+  prepare(ctx, args) {
+    needPreview(ctx);
+    const url = validateUrl(args.url || args.body);   // ném lỗi nếu không phải localhost an toàn
+    return { label: url, summary: 'Mở cửa sổ xem trước (sandbox, chỉ localhost, không dùng chung cookie với Studio)' };
+  },
+  async run(ctx, args) {
+    const st = await needPreview(ctx).open(args.url || args.body);
+    return { output: `OK: đã mở xem trước ${st.url}`, ok: true, exitCode: 0 };
+  }
+};
+const preview_screenshot = {
+  name: 'preview_screenshot', kind: 'exec',
+  description: 'Chụp màn hình trang đang mở trong cửa sổ xem trước và ĐÍNH KÈM ảnh vào tin nhắn kế tiếp gửi cho bạn. LUÔN cần người dùng duyệt (ảnh có thể chứa dữ liệu của ứng dụng). Cần preview_open trước.',
+  usage: 'tool: preview_screenshot',
+  prepare(ctx) {
+    const p = needPreview(ctx);
+    const st = p.status();
+    if (!st.open) throw new Error('Chưa mở trang xem trước: hãy gọi preview_open trước.');
+    return { label: `chụp ${st.url}`, summary: 'Chụp màn hình cửa sổ xem trước và gửi ảnh cho Gemini (qua extension)' };
+  },
+  async run(ctx) {
+    const shot = await needPreview(ctx).capture();
+    return {
+      output: `OK: đã chụp ${shot.url} (${shot.width}×${shot.height}) và đính kèm ảnh vào tin nhắn này. Nếu bạn không thấy ảnh đính kèm, hãy nói rõ thay vì đoán.`,
+      attach: { name: 'xem-truoc.png', base64: shot.png.toString('base64') }, ok: true, exitCode: 0
+    };
+  }
+};
+
 /* ---------- git (xem: status/diff tự chạy; commit LUÔN cần duyệt) ---------- */
 function commitPaths(args) {
   return String(args.body || '').split('\n').map(s => s.trim()).filter(Boolean);
@@ -469,7 +508,7 @@ const git_commit = {
     return { output: `OK: đã commit ${r.hash} — ${r.summary} (${r.files} đường dẫn)`, exitCode: 0, ok: true };
   }
 };
-const TOOLS = { read_file, list_dir, grep, search_code, write_file, edit_file, run_command, process_start, process_logs, process_send, process_stop, git_status, git_diff, git_commit, plan, finish, ask_user };
+const TOOLS = { read_file, list_dir, grep, search_code, write_file, edit_file, run_command, process_start, process_logs, process_send, process_stop, preview_open, preview_screenshot, git_status, git_diff, git_commit, plan, finish, ask_user };
 const specs = () => Object.values(TOOLS).map(t => ({ name: t.name, description: t.description, usage: t.usage }));
 
 module.exports = { TOOLS, specs, bool, computeEdit, unifiedDiff };
