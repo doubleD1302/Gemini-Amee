@@ -14,6 +14,7 @@ function el(opts = {}) {
     tagName: (opts.tag || 'div').toUpperCase(),
     textContent: opts.text || '',
     parentElement: opts.parent || null,
+    children: opts.kids || [],
     _closest: opts.closest || {},
     _table: opts.table || {},
     getBoundingClientRect: () => (opts.visible === false ? { width: 0, height: 0, top: 0 } : { width: 10, height: 10, top: opts.top == null ? 700 : opts.top }),
@@ -232,4 +233,85 @@ test('manifest loads selectors.js before content.js and content.js no longer har
   assert.doesNotThrow(() => new vm.Script(content));
   assert.ok(!/querySelectorAll\(['"`](?:model-response|button\[|\.ql-editor)/.test(content));
   assert.ok(content.includes('Kiểm tra bộ chọn'));
+});
+
+/* ---------- Hồi quy từ kết quả chạy trên Gemini thật (2026-11-14, giao diện tiếng Việt) ---------- */
+
+test('REGRESSION: the extension HUD button is never mistaken for the Gemini send button', () => {
+  const hud = el({ tag: 'div' });
+  const hudBtn = el({ tag: 'button', attrs: { title: 'Gửi câu trả lời Gemini gần nhất về Studio' }, closest: { '#gps-bridge-hud': hud } });
+  const sel = 'button[title*="Gửi" i]';
+  assert.ok(S.SELECTORS.sendButton.includes(sel));
+  assert.equal(S.findSendButton(doc({ [sel]: [hudBtn] }), { composer: null }), null);
+  const real = el({ tag: 'button', attrs: { title: 'Gửi' } });
+  const hit = S.findSendButton(doc({ [sel]: [hudBtn, real] }), { composer: null });
+  assert.equal(hit.el, real);
+  // Cũng áp dụng cho nút "Đề xuất ghi" trong khối code và panel chẩn đoán.
+  assert.equal(S.isOwnUi(el({ closest: { '.gps-vibe-btn': hud } })), true);
+  assert.equal(S.isOwnUi(el({ closest: { '#gps-bridge-diag': hud } })), true);
+  assert.equal(S.isOwnUi(el()), false);
+  // diagnose phải báo "không thấy" thay vì khớp nhầm nút của extension.
+  const rep = S.diagnose(doc({ [sel]: [hudBtn] }));
+  assert.equal(rep.results.sendButton.ok, false);
+  assert.equal(rep.results.sendButton.tried.find(x => x.selector === sel).matches, 1);
+});
+
+test('REGRESSION: Vietnamese stop button "Ngừng tạo câu trả lời" is detected, and it is not offered as the send button', () => {
+  assert.ok(S.SELECTORS.stopButton.some(s => s.includes('Ngừng tạo')));
+  const shared = el({ tag: 'button', attrs: { 'aria-label': 'Ngừng tạo câu trả lời' } });
+  const stopSel = S.SELECTORS.stopButton.find(s => s.includes('Ngừng tạo'));
+  const d = doc({ [stopSel]: [shared], 'div[class*="send-button-container"] button': [shared], '[data-test-id="send-button-container"] button': [shared] });
+  assert.equal(S.findStopButton(d).el, shared);
+  assert.equal(S.findSendButton(d, { composer: null }), null, 'a stop-labelled button must never be clicked as "send"');
+  assert.equal(S.diagnose(d).results.stopButton.ok, true);
+});
+
+test('send button: data-test-id="send-button-container" is the first candidate', () => {
+  assert.equal(S.SELECTORS.sendButton[0], '[data-test-id="send-button-container"] button');
+});
+
+test('REGRESSION: collapsed sidebar — new-chat button exists but is hidden; use it as a fallback, prefer visible ones', () => {
+  const [a, b] = S.SELECTORS.newChat;
+  const hidden = el({ visible: false });
+  const hit = S.findNewChat(doc({ [a]: [hidden] }));
+  assert.equal(hit.el, hidden);
+  assert.equal(hit.via, 'hidden');
+  const shown = el();
+  const hit2 = S.findNewChat(doc({ [a]: [hidden], [b]: [shown] }));
+  assert.equal(hit2.el, shown);
+  assert.ok(!hit2.via);
+  const rep = S.diagnose(doc({ [a]: [hidden] }));
+  assert.equal(rep.results.newChat.ok, true);
+  assert.match(S.formatReport(rep), /Nút chat mới.*dự phòng: hidden/);
+});
+
+test('last-button heuristic skips unlabeled buttons and Vietnamese upload/voice/tools/mode buttons', () => {
+  const mk = label => el({ tag: 'button', attrs: label ? { 'aria-label': label } : {} });
+  const buttons = [mk('Gửi tin nhắn'), mk('Mở công cụ chọn chế độ, hiện tại là Hydrogen Cao'), mk(''), mk('Nhập bằng giọng nói (^⇧D)'), mk('Nội dung tải lên và công cụ'), mk('Cài đặt')];
+  const c = el({ table: { 'button, [role="button"]': buttons } });
+  const hit = S.findSendButton(doc({}), { composer: el({ closest: { form: c } }) });
+  assert.equal(hit.via, 'container:last-button');
+  assert.equal(hit.el, buttons[0]);
+  const onlyBad = el({ table: { 'button, [role="button"]': buttons.slice(1) } });
+  assert.equal(S.findSendButton(doc({}), { composer: el({ closest: { form: onlyBad } }) }), null);
+});
+
+test('response skeleton has structure only (no text), collapses repeats, prefers a response with code', () => {
+  const secret = 'NOI DUNG TRA LOI BI MAT';
+  const code = el({ tag: 'code', attrs: { class: 'code-container formatted' }, kids: [1, 2, 3, 4, 5, 6].map(() => el({ tag: 'span', text: secret })) });
+  const pre = el({ tag: 'pre', kids: [code] });
+  const withCode = el({ tag: 'model-response', kids: [el({ tag: 'message-content', attrs: { class: 'markdown' }, text: secret, kids: [el({ tag: 'p', text: secret }), el({ tag: 'code-block', attrs: { 'data-test-id': 'code-content', role: 'group' }, kids: [pre] })] })] });
+  const plain = el({ tag: 'model-response', kids: [el({ tag: 'message-content', text: secret })] });
+  const sel = S.SELECTORS.response[0];
+  const d = doc({ [sel]: [withCode, plain], ['pre, code-block']: [] });
+  withCode._table = { 'pre, code-block': [pre] };
+  plain._table = {};
+  const lines = S.collectResponseSkeleton(d);
+  const out = lines.join('\n');
+  assert.ok(!out.includes(secret));
+  assert.match(out, /^model-response/);
+  assert.match(out, /code-block#code-content\[role=group\]/);
+  assert.match(out, /pre\n\s+code\.code-container\.formatted/);
+  assert.match(out, /…×4 span nữa/);
+  assert.deepEqual(S.collectResponseSkeleton(doc({})), []);
 });

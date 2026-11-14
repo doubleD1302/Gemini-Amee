@@ -18,7 +18,13 @@
     ],
     // Vùng bao quanh ô nhập, dùng để giới hạn tìm nút Gửi (closest).
     composerContainer: ['.chat-input-container', '.input-area-container', '.input-area', 'rich-textarea', 'form'],
+    // UI của chính extension (HUD, nút "Đề xuất ghi"): KHÔNG BAO GIỜ được coi là phần tử của Gemini.
+    // Lỗi thật đã gặp: nút HUD có title "Gửi câu trả lời…" bị khớp nhầm thành nút Gửi của Gemini.
+    ownUi: '#gps-bridge-hud, #gps-bridge-diag, .gps-vibe-btn',
+    // Nút Gửi và nút Dừng của Gemini có thể là CÙNG một nút (đổi nhãn khi đang tạo câu trả lời).
+    stopLabelParts: ['stop', 'ngừng', 'dừng'],
     sendButton: [
+      '[data-test-id="send-button-container"] button',
       'div[class*="send-button-container"] button',
       'div[class*="send-button-container"] [role="button"]',
       'button.send-button',
@@ -54,8 +60,10 @@
     sendIconSelector: 'mat-icon, .google-symbols, svg',
     sendIconTexts: ['send', 'send_spark'],
     sendIconNameIncludes: 'send',
-    sendExcludeLabels: ['mic', 'audio', 'upload', 'file', 'attach', 'thêm', 'tệp'],
+    sendExcludeLabels: ['mic', 'audio', 'upload', 'file', 'attach', 'thêm', 'tệp', 'tải lên', 'giọng nói', 'công cụ', 'chế độ', 'tool', 'voice', 'mode', 'settings', 'cài đặt', 'ngừng', 'stop', 'dừng'],
     stopButton: [
+      // Đã xác nhận trên Gemini tiếng Việt: aria-label "Ngừng tạo câu trả lời".
+      'button[aria-label*="Ngừng tạo" i]',
       'button[aria-label*="Stop" i]',
       'button[aria-label*="Dừng" i]',
       'button[title*="Stop" i]',
@@ -108,9 +116,24 @@
   }
 
   /** Ứng viên đầu tiên có phần tử (đã lọc hiển thị). reverse: lấy phần tử cuối. */
-  function findFirst(scope, candidates, { isVisible = defaultVisible, reverse = false, requireVisible = true } = {}) {
+  function isOwnUi(el) {
+    try { return !!(el && typeof el.closest === 'function' && el.closest(SELECTORS.ownUi)); } catch (_) { return false; }
+  }
+
+  function labelOf(el) {
+    const g = n => (el && typeof el.getAttribute === 'function' && el.getAttribute(n)) || '';
+    return (g('aria-label') + ' ' + g('title') + ' ' + g('mattooltip')).toLowerCase();
+  }
+
+  function isStopLike(el) {
+    const label = labelOf(el);
+    return SELECTORS.stopLabelParts.some(x => label.includes(x));
+  }
+
+  function findFirst(scope, candidates, { isVisible = defaultVisible, reverse = false, requireVisible = true, accept = null } = {}) {
     for (let i = 0; i < candidates.length; i++) {
-      let list = safeAll(scope, candidates[i]).list;
+      let list = safeAll(scope, candidates[i]).list.filter(e => !isOwnUi(e));
+      if (accept) list = list.filter(accept);
       if (requireVisible) list = list.filter(isVisible);
       if (reverse) list = list.slice().reverse();
       if (list.length) return { el: list[0], selector: candidates[i], index: i };
@@ -138,8 +161,15 @@
     return findFirst(doc, SELECTORS.stopButton, opts);
   }
 
+  /**
+   * Nút chat mới. Khi thanh bên đang thu gọn, nút vẫn có trong DOM nhưng không hiển thị
+   * (quan sát thật: khớp nhưng visible=0) → dự phòng: lấy phần tử ẩn đầu tiên (via = 'hidden').
+   */
   function findNewChat(doc, opts) {
-    return findFirst(doc, SELECTORS.newChat, opts);
+    const hit = findFirst(doc, SELECTORS.newChat, opts);
+    if (hit) return hit;
+    const hidden = findFirst(doc, SELECTORS.newChat, Object.assign({}, opts, { requireVisible: false }));
+    return hidden ? Object.assign(hidden, { via: 'hidden' }) : null;
   }
 
   function findCodeBlocks(doc) {
@@ -159,6 +189,7 @@
    */
   function findSendButton(doc, opts = {}) {
     const isVisible = opts.isVisible || defaultVisible;
+    const notStop = el => !isStopLike(el);
     const composer = opts.composer !== undefined ? opts.composer : (findComposer(doc, { isVisible }) || {}).el || null;
     let container = null;
     if (composer) {
@@ -167,28 +198,30 @@
     }
 
     if (container) {
-      const hit = findFirst(container, SELECTORS.sendButton, { isVisible });
+      const hit = findFirst(container, SELECTORS.sendButton, { isVisible, accept: notStop });
       if (hit) return { el: hit.el, via: 'container:selector', selector: hit.selector };
       for (const icon of safeAll(container, SELECTORS.sendIconSelector).list) {
         if (isIconSend(icon)) {
           const btn = icon.closest && icon.closest('button, [role="button"]');
-          if (btn && isVisible(btn)) return { el: btn, via: 'container:icon', selector: SELECTORS.sendIconSelector };
+          if (btn && isVisible(btn) && notStop(btn)) return { el: btn, via: 'container:icon', selector: SELECTORS.sendIconSelector };
         }
       }
-      const buttons = safeAll(container, 'button, [role="button"]').list.filter(isVisible).reverse();
+      // Heuristic cuối: nút có nhãn, không thuộc nhóm mic/đính kèm/công cụ/dừng. Nút KHÔNG nhãn bị bỏ qua
+      // (Gemini có nhiều nút không nhãn trong vùng nhập; bấm nhầm còn tệ hơn không tìm thấy).
+      const buttons = safeAll(container, 'button, [role="button"]').list.filter(e => !isOwnUi(e) && isVisible(e)).reverse();
       const cand = buttons.find(b => {
-        const label = (((b.getAttribute && b.getAttribute('aria-label')) || '') + ' ' + ((b.getAttribute && b.getAttribute('title')) || '')).toLowerCase();
-        return !SELECTORS.sendExcludeLabels.some(x => label.includes(x));
+        const label = labelOf(b).trim();
+        return label && !SELECTORS.sendExcludeLabels.some(x => label.includes(x));
       });
       if (cand) return { el: cand, via: 'container:last-button', selector: 'button, [role="button"]' };
     }
 
-    const hit = findFirst(doc, SELECTORS.sendButton, { isVisible, reverse: true });
+    const hit = findFirst(doc, SELECTORS.sendButton, { isVisible, reverse: true, accept: notStop });
     if (hit) return { el: hit.el, via: 'global:selector', selector: hit.selector };
     for (const icon of safeAll(doc, SELECTORS.sendIconSelector).list.reverse()) {
       if (isIconSend(icon)) {
         const btn = icon.closest && icon.closest('button, [role="button"]');
-        if (btn && isVisible(btn)) return { el: btn, via: 'global:icon', selector: SELECTORS.sendIconSelector };
+        if (btn && isVisible(btn) && !isOwnUi(btn) && notStop(btn)) return { el: btn, via: 'global:icon', selector: SELECTORS.sendIconSelector };
       }
     }
     return null;
@@ -281,6 +314,51 @@
   }
 
   /**
+   * "Khung xương" HTML của một khối trả lời: chỉ tag, data-test-id, role, tối đa 3 class — KHÔNG có chữ.
+   * Dùng để đối chiếu md.js (chuyển DOM → Markdown) với cấu trúc Gemini thật.
+   * Ưu tiên khối trả lời có khối code; anh em cùng tag lặp quá 3 lần được gộp thành "…×N".
+   */
+  function skeletonOf(root) {
+    const lines = [];
+    const MAX_LINES = 160, MAX_DEPTH = 10;
+    const kidsOf = n => (n && n.children ? Array.from(n.children) : []);
+    function desc(n) {
+      const g = a => (n.getAttribute && n.getAttribute(a)) || '';
+      let d = String(n.tagName || '?').toLowerCase();
+      const id = g('data-test-id'); if (id) d += '#' + scrub(id, 40);
+      const role = g('role'); if (role) d += '[role=' + scrub(role, 20) + ']';
+      const cls = g('class').split(/\s+/).filter(Boolean).slice(0, 3).map(c => scrub(c, 30));
+      if (cls.length) d += '.' + cls.join('.');
+      return d;
+    }
+    function walk(n, depth) {
+      if (lines.length >= MAX_LINES) return;
+      lines.push('  '.repeat(depth) + desc(n));
+      if (depth >= MAX_DEPTH) return;
+      const kids = kidsOf(n);
+      let i = 0;
+      while (i < kids.length && lines.length < MAX_LINES) {
+        let j = i;
+        while (j < kids.length && kids[j].tagName === kids[i].tagName) j++;
+        const run = j - i;
+        const show = run > 3 ? 2 : run;
+        for (let k = 0; k < show; k++) walk(kids[i + k], depth + 1);
+        if (run > show) lines.push('  '.repeat(depth + 1) + '…×' + (run - show) + ' ' + String(kids[i].tagName || '').toLowerCase() + ' nữa');
+        i = j;
+      }
+    }
+    walk(root, 0);
+    return lines;
+  }
+
+  function collectResponseSkeleton(doc) {
+    const resp = findResponses(doc).els;
+    if (!resp.length) return [];
+    const withCode = resp.slice().reverse().find(r => safeAll(r, 'pre, code-block').list.length > 0);
+    return skeletonOf(withCode || resp[resp.length - 1]);
+  }
+
+  /**
    * Gợi ý cấu trúc DOM khi selector thất bại: tên custom element, data-test-id, và các nút ở nửa dưới màn hình.
    * Chỉ thu thuộc tính giao diện, KHÔNG thu nội dung chat; nhãn có '@' bị ẩn.
    */
@@ -296,7 +374,7 @@
       const id = el.getAttribute && el.getAttribute('data-test-id');
       if (id) testIds.add(scrub(id, 80));
     }
-    const buttons = safeAll(doc, 'button, [role="button"]').list.filter(isVisible).filter(b => {
+    const buttons = safeAll(doc, 'button, [role="button"]').list.filter(b => !isOwnUi(b)).filter(isVisible).filter(b => {
       const r = b.getBoundingClientRect();
       return r.top > vh * 0.5;
     }).slice(0, 40).map(b => {
@@ -311,11 +389,12 @@
       customElements: Object.entries(tags).sort((a, b) => b[1] - a[1]).slice(0, 40).map(([tag, n]) => `${tag}×${n}`),
       testIds: Array.from(testIds).slice(0, 60),
       editables,
-      bottomButtons: buttons
+      bottomButtons: buttons,
+      responseSkeleton: collectResponseSkeleton(doc)
     };
   }
 
-  const api = { SELECTORS, TARGETS, findFirst, findComposer, findResponses, findResponseContent, findStopButton, findNewChat, findCodeBlocks, findSendButton, diagnose, formatReport, collectHints, defaultVisible };
+  const api = { SELECTORS, TARGETS, findFirst, findComposer, findResponses, findResponseContent, findStopButton, findNewChat, findCodeBlocks, findSendButton, diagnose, formatReport, collectHints, collectResponseSkeleton, skeletonOf, isOwnUi, isStopLike, defaultVisible };
   root.__gpsSelectors = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

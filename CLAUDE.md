@@ -17,7 +17,7 @@ Giao tiếp và UI bằng **tiếng Việt**. Không có API key Gemini; không 
 
 ## Lệnh
 ```
-npm test                 # node --test tests/*.test.cjs  (105 test; KHÔNG dùng `node --test tests/`)
+npm test                 # node --test tests/*.test.cjs  (111 test; KHÔNG dùng `node --test tests/`)
 npx tsc --noEmit         # strict, phải exit 0
 npx vite build
 npm run package:win      # build bản Windows (cap-nhat-extension.bat chép từ release/win-unpacked)
