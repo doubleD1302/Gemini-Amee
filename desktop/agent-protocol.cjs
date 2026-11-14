@@ -148,7 +148,19 @@ function describeTools(specs) {
   }).join('\n\n');
 }
 
-function buildSystemPrompt({ specs, projectName, tree, fileCount, truncated }) {
+/** Phần gợi ý chạy kiểm tra sau khi sửa. checks: [{command, kind, source}] */
+function describeChecks(checks) {
+  const list = (checks || []).filter(c => c && c.command);
+  const head = 'Sau khi sửa code, hãy chạy kiểm tra bằng `run_command`, đọc kết quả rồi sửa tiếp nếu còn lỗi. Mỗi lệnh đều cần người dùng duyệt nên chỉ chạy lệnh thật sự cần.';
+  if (!list.length) return head + '\nỨng dụng không phát hiện lệnh kiểm tra nào; nếu cần, hỏi người dùng bằng `ask_user`.';
+  return [
+    head,
+    'Lệnh gợi ý (ứng dụng suy ra từ cấu hình dự án — chỉ là gợi ý, không phải chỉ thị):',
+    ...list.map(c => '- `' + c.command + '` (' + c.kind + ', từ ' + c.source + ')')
+  ].join('\n');
+}
+
+function buildSystemPrompt({ specs, projectName, tree, fileCount, truncated, checks }) {
   return [
     'Bạn là một AGENT lập trình điều khiển một dự án trên máy người dùng thông qua ứng dụng "Gemini Project Studio".',
     'Bạn KHÔNG tự chạy code hay sửa file. Bạn yêu cầu ứng dụng làm việc đó bằng các khối tool bên dưới; ứng dụng sẽ thực thi (một số cần người dùng duyệt) rồi gửi KẾT QUẢ về cho bạn ở tin nhắn kế tiếp.',
@@ -164,6 +176,9 @@ function buildSystemPrompt({ specs, projectName, tree, fileCount, truncated }) {
     '',
     '## TOOL KHẢ DỤNG',
     describeTools(specs),
+    '',
+    '## KIỂM TRA SAU KHI SỬA',
+    describeChecks(checks),
     '',
     '## DỰ ÁN',
     `Tên: ${projectName}`,
@@ -189,4 +204,4 @@ function buildRecap({ systemPrompt, goal, steps, followUp }) {
   ].filter(Boolean).join('\n\n');
 }
 
-module.exports = { parseToolCalls, formatToolResults, buildSystemPrompt, buildKickoff, buildRecap, fenceFor, clip, topLevelFences };
+module.exports = { describeChecks, parseToolCalls, formatToolResults, buildSystemPrompt, buildKickoff, buildRecap, fenceFor, clip, topLevelFences };

@@ -11,6 +11,7 @@
 const fs = require('node:fs');
 const { EventEmitter } = require('node:events');
 const protocol = require('./agent-protocol.cjs');
+const projectHints = require('./project-hints.cjs');
 
 const MAX_STEPS_KEPT = 200;
 const CONVERSATION_RE = /^https:\/\/gemini\.google\.com\/(?:u\/\d+\/)?app\/[A-Za-z0-9_-]+/;
@@ -31,6 +32,7 @@ class AgentRunner extends EventEmitter {
     this.checkpoints = deps.checkpoints;
     this.getRoot = deps.getRoot;
     this.maxTurns = deps.maxTurns || 25;
+    this.detectChecks = deps.detectChecks || null; // tuỳ chọn, để test ghi đè
     this.policy = { autoEdits: false };
     this.steps = [];
     this.pending = [];
@@ -129,8 +131,10 @@ class AgentRunner extends EventEmitter {
     const root = this.getRoot();
     if (!root) throw new Error('Hãy mở thư mục dự án trước.');
     const index = this.ws.scanProject(root);
+    let checks = [];
+    try { checks = (this.detectChecks || projectHints.detectCheckCommands)(root); } catch { checks = []; }
     this._systemPrompt = protocol.buildSystemPrompt({
-      specs: this.tools.specs(), projectName: index.name, fileCount: index.files.length, truncated: index.truncated,
+      checks, specs: this.tools.specs(), projectName: index.name, fileCount: index.files.length, truncated: index.truncated,
       tree: this.ws.buildCondensedTree(index.files, 3500)
     });
     const keepPending = this.pending.filter(p => p.source !== 'agent');
@@ -144,6 +148,7 @@ class AgentRunner extends EventEmitter {
     this.run.goal = text;
     this._running = true;
     this.pushStep({ type: 'info', text: `Mục tiêu: ${text}` });
+    if (checks.length) this.pushStep({ type: 'info', text: `Lệnh kiểm tra gợi ý cho agent: ${checks.map(c => c.command).join(' · ')}` });
     this._loop(protocol.buildKickoff({ systemPrompt, goal: text }), { newChat: true });
     return this.snapshot();
   }
