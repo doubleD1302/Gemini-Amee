@@ -27,6 +27,14 @@ contextBridge.exposeInMainWorld('studio', {
     ipcRenderer.on('studio:connection',listener);
     return () => ipcRenderer.removeListener('studio:connection',listener);
   },
+  rules: {
+    get: () => invoke('rules:get'),
+    save: text => invoke('rules:save', text),
+    saveSkill: (name, text) => invoke('rules:save-skill', name, text),
+    deleteSkill: name => invoke('rules:delete-skill', name),
+    trust: hash => invoke('rules:trust', hash),
+    revoke: () => invoke('rules:revoke')
+  },
   agent: {
     state: () => invoke('agent:state'),
     start: goal => invoke('agent:start', goal),

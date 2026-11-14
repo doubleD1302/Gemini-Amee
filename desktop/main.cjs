@@ -9,9 +9,11 @@ const { CheckpointStore } = require('./checkpoints.cjs');
 const { AgentRunner } = require('./agent.cjs');
 const { SessionStore } = require('./sessions.cjs');
 const { openInEditor } = require('./editor.cjs');
+const { RulesStore } = require('./project-rules.cjs');
 let bridge = null;
 let runner = null;
 let checkpoints = null;
+let rulesStore = null;
 let mainWindow = null;
 let currentRoot = null;
 let lastChatUrl = null;          // cuộc trò chuyện Gemini đang dùng cho chế độ chat
@@ -76,7 +78,8 @@ app.whenReady().then(async () => {
   bridge = new Bridge({ token: state.token, port: state.port });
   await bridge.start();
   checkpoints = new CheckpointStore(path.join(userData, 'checkpoints'));
-  runner = new AgentRunner({ bridge, workspace, tools, checkpoints, getRoot: () => currentRoot, sessions: new SessionStore(path.join(userData, 'sessions')) });
+  rulesStore = new RulesStore(path.join(userData, 'rules'));
+  runner = new AgentRunner({ bridge, workspace, tools, checkpoints, getRoot: () => currentRoot, sessions: new SessionStore(path.join(userData, 'sessions')), rules: rulesStore });
   bridge.on('job', job => {
     if (job.kind === 'chat') {
       const m = job.conversationUrl && CONV_RE.exec(job.conversationUrl);
@@ -171,6 +174,13 @@ app.whenReady().then(async () => {
     return extensionPath;
   });
   ipcMain.handle('studio:import-reply',(_event,id,text) => bridge.completeManually(id, text));
+  // ----- Quy tắc & kỹ năng theo project (.gps) -----
+  ipcMain.handle('rules:get', () => rulesStore.get(requireWorkspace()));
+  ipcMain.handle('rules:save', (_event, text) => rulesStore.saveRules(requireWorkspace(), String(text == null ? '' : text)));
+  ipcMain.handle('rules:save-skill', (_event, name, text) => rulesStore.saveSkill(requireWorkspace(), String(name || ''), String(text == null ? '' : text)));
+  ipcMain.handle('rules:delete-skill', (_event, name) => rulesStore.deleteSkill(requireWorkspace(), String(name || '')));
+  ipcMain.handle('rules:trust', (_event, hash) => rulesStore.trust(requireWorkspace(), String(hash || '')));
+  ipcMain.handle('rules:revoke', () => rulesStore.revoke(requireWorkspace()));
   // ----- Agent -----
   ipcMain.handle('agent:state', () => runner.snapshot());
   ipcMain.handle('agent:start', (_event, goal) => runner.start(goal));

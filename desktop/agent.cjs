@@ -37,6 +37,7 @@ class AgentRunner extends EventEmitter {
     this.getRoot = deps.getRoot;
     this.maxTurns = deps.maxTurns || 25;
     this.detectChecks = deps.detectChecks || null; // tuỳ chọn, để test ghi đè
+    this.rules = deps.rules || null;               // RulesStore (tuỳ chọn): quy tắc/kỹ năng .gps đã được người dùng duyệt
     this.sessions = deps.sessions || null;         // SessionStore (tuỳ chọn): lưu bền phiên theo project, NGOÀI project
     this._runRoot = null;
     this._persistTimer = null;
@@ -159,11 +160,18 @@ class AgentRunner extends EventEmitter {
     const index = this.ws.scanProject(root);
     let checks = [];
     try { checks = (this.detectChecks || projectHints.detectCheckCommands)(root); } catch { checks = []; }
+    let rulesInfo = { text: '', status: 'none', skills: 0, hasRules: false };
+    try { if (this.rules) rulesInfo = this.rules.promptSection(root); } catch { /* quy tắc hỏng không được làm hỏng phiên */ }
     const systemPrompt = protocol.buildSystemPrompt({
-      checks, specs: this.tools.specs(), projectName: index.name, fileCount: index.files.length, truncated: index.truncated,
+      projectRules: rulesInfo.text, checks, specs: this.tools.specs(), projectName: index.name, fileCount: index.files.length, truncated: index.truncated,
       tree: this.ws.buildCondensedTree(index.files, 3500)
     });
-    return { systemPrompt, checks };
+    return { systemPrompt, checks, rulesInfo };
+  }
+  /** Báo trên timeline việc quy tắc project có được nạp hay không (để người dùng không bất ngờ). */
+  _noteRules(rulesInfo) {
+    if (rulesInfo.status === 'trusted') this.pushStep({ type: 'info', text: `Đã nạp quy tắc project đã duyệt (${rulesInfo.hasRules ? '.gps/rules.md' : 'không có rules.md'}${rulesInfo.skills ? ` + ${rulesInfo.skills} kỹ năng` : ''}).` });
+    else if (rulesInfo.status === 'review') this.pushStep({ type: 'info', text: 'Project có thư mục .gps (quy tắc/kỹ năng) nhưng nội dung CHƯA được bạn duyệt hoặc đã đổi sau khi duyệt → KHÔNG được nạp cho agent. Xem và duyệt ở mục "Quy tắc & kỹ năng của project".' });
   }
 
   /* ---------- lưu bền phiên ---------- */
@@ -224,7 +232,7 @@ class AgentRunner extends EventEmitter {
     if (!root) throw new Error('Hãy mở thư mục dự án trước.');
     const saved = this.sessions.load(root);
     if (!saved) throw new Error('Không có phiên trước để khôi phục cho project này.');
-    const { systemPrompt } = this._makeSystemPrompt(root);
+    const { systemPrompt, rulesInfo } = this._makeSystemPrompt(root);
 
     const expired = [];
     const steps = saved.steps.map(st => {
@@ -248,6 +256,7 @@ class AgentRunner extends EventEmitter {
     this.meter.rotateRequested = true;
 
     const when = saved.savedAt ? new Date(saved.savedAt).toLocaleString('vi-VN') : 'không rõ';
+    this._noteRules(rulesInfo);
     this.pushStep({ type: 'info', text: `Đã khôi phục phiên trước (lưu lúc ${when}).${expired.length ? ` ${expired.length} yêu cầu duyệt đang chờ khi ứng dụng đóng đã HẾT HẠN và KHÔNG được tự thực thi: ${expired.join('; ')}.` : ''}` });
 
     if (!continueRun) {
@@ -316,6 +325,7 @@ class AgentRunner extends EventEmitter {
     this.run.goal = text;
     this._running = true;
     this.pushStep({ type: 'info', text: `Mục tiêu: ${text}` });
+    this._noteRules(built.rulesInfo);
     if (checks.length) this.pushStep({ type: 'info', text: `Lệnh kiểm tra gợi ý cho agent: ${checks.map(c => c.command).join(' · ')}` });
     const att = this._takeAttachments();
     this._loop(protocol.buildKickoff({ systemPrompt, goal: text }) + att.text, { newChat: true, attachments: att.images });

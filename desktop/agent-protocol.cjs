@@ -160,7 +160,7 @@ function describeChecks(checks) {
   ].join('\n');
 }
 
-function buildSystemPrompt({ specs, projectName, tree, fileCount, truncated, checks }) {
+function buildSystemPrompt({ specs, projectName, tree, fileCount, truncated, checks, projectRules }) {
   return [
     'Bạn là một AGENT lập trình điều khiển một dự án trên máy người dùng thông qua ứng dụng "Gemini Project Studio".',
     'Bạn KHÔNG tự chạy code hay sửa file. Bạn yêu cầu ứng dụng làm việc đó bằng các khối tool bên dưới; ứng dụng sẽ thực thi (một số cần người dùng duyệt) rồi gửi KẾT QUẢ về cho bạn ở tin nhắn kế tiếp.',
@@ -181,6 +181,7 @@ function buildSystemPrompt({ specs, projectName, tree, fileCount, truncated, che
     '## KIỂM TRA SAU KHI SỬA',
     describeChecks(checks),
     '',
+    ...(projectRules ? [projectRules, ''] : []),
     '## DỰ ÁN',
     `Tên: ${projectName}`,
     `Số file đã lập chỉ mục: ${fileCount}${truncated ? ' (danh sách bị cắt)' : ''}`,

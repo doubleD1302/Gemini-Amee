@@ -87,6 +87,19 @@ export interface AgentApi {
   undo(id: string, force?: boolean): Promise<CheckpointInfo>;
   onState(fn: (state: AgentState) => void): () => void;
 }
+export interface ProjectSkill { name: string; file: string; description: string; text: string; }
+export interface ProjectRules {
+  status: 'none'|'trusted'|'review'; rules: string; skills: ProjectSkill[]; warnings: string[]; hash: string;
+  limits: { rulesChars: number; skillChars: number; skills: number };
+}
+export interface RulesApi {
+  get(): Promise<ProjectRules>;
+  save(text: string): Promise<{ path: string; status: string }>;
+  saveSkill(name: string, text: string): Promise<{ path: string; status: string }>;
+  deleteSkill(name: string): Promise<ProjectRules>;
+  trust(hash: string): Promise<ProjectRules>;
+  revoke(): Promise<ProjectRules>;
+}
 export interface StudioApi {
   init():Promise<{workspace:WorkspaceInfo|null;connection:BridgeConnection}>;
   chooseFolder():Promise<WorkspaceInfo|null>;
@@ -103,6 +116,7 @@ export interface StudioApi {
   showExtension():Promise<string>;
   importReply(id:string,text:string):Promise<boolean>;
   agent: AgentApi;
+  rules: RulesApi;
   onJob(fn:(job:Job)=>void):()=>void;
   onConnection(fn:(conn:BridgeConnection)=>void):()=>void;
   onFileWritten?(fn:(data:{path:string})=>void):()=>void;

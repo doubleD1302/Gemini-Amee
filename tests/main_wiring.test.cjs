@@ -54,7 +54,7 @@ const jobUpdates = id => sent.filter(s => s.ch === 'studio:job' && s.payload.id 
 
 test('boots, registers every IPC channel, persists token/port for stable pairing', async () => {
   await boot();
-  for (const ch of ['studio:init', 'studio:choose-folder', 'studio:read-file', 'studio:write-file', 'studio:search', 'studio:prepare', 'studio:send', 'studio:import-reply', 'agent:state', 'agent:start', 'agent:reply', 'agent:retry', 'agent:rotate-next', 'agent:previous', 'agent:open-in-editor', 'agent:resume', 'agent:discard-previous', 'agent:attach', 'agent:detach', 'agent:cancel', 'agent:approve', 'agent:set-policy', 'agent:job-prompt', 'agent:checkpoints', 'agent:undo']) assert(handlers.has(ch), ch);
+  for (const ch of ['studio:init', 'studio:choose-folder', 'studio:read-file', 'studio:write-file', 'studio:search', 'studio:prepare', 'studio:send', 'studio:import-reply', 'agent:state', 'agent:start', 'agent:reply', 'agent:retry', 'agent:rotate-next', 'agent:previous', 'agent:open-in-editor', 'agent:resume', 'agent:discard-previous', 'rules:get', 'rules:save', 'rules:save-skill', 'rules:delete-skill', 'rules:trust', 'rules:revoke', 'agent:attach', 'agent:detach', 'agent:cancel', 'agent:approve', 'agent:set-policy', 'agent:job-prompt', 'agent:checkpoints', 'agent:undo']) assert(handlers.has(ch), ch);
   assert.match(bridgeInfo.token, /^[0-9a-f]{64}$/);
   const saved = JSON.parse(fs.readFileSync(path.join(userData, 'bridge-state.json'), 'utf8'));
   assert.equal(saved.token, bridgeInfo.token);
@@ -161,4 +161,32 @@ test('agent over IPC: events stream to the renderer; approval gate; Gemini-page 
   assert.equal(pending.length, 1);assert.equal(pending[0].source, 'vibe');
   await invoke('agent:approve', pending[0].id, 'reject', '');
   assert.equal(fs.readFileSync(path.join(project, 'src', 'app.ts'), 'utf8'), 'export const answer = 7;\n');
+});
+
+test('rules and attachment IPC: saving trusts the user\'s own text, the trust record lives in userData, attachments flow through the runner', async () => {
+  const saved = await invoke('rules:save', 'Luôn trả lời bằng tiếng Việt.');
+  assert.equal(saved.path, '.gps/rules.md');
+  assert.equal(saved.status, 'trusted');
+  assert.equal((await invoke('rules:get')).status, 'trusted');
+  assert(fs.existsSync(path.join(userData, 'rules', 'rules-trust.json')), 'trust record is outside the project');
+  assert.deepEqual(fs.readdirSync(project).filter(n => n.includes('trust')), []);
+  fs.writeFileSync(path.join(project, '.gps', 'rules.md'), 'bị sửa từ bên ngoài');
+  const review = await invoke('rules:get');
+  assert.equal(review.status, 'review');
+  await assert.rejects(async () => invoke('rules:trust', 'hash-cu'), /đã thay đổi/);
+  assert.equal((await invoke('rules:trust', review.hash)).status, 'trusted');
+  await invoke('rules:save-skill', 'demo', '---\ndescription: Thử\n---\n');
+  assert.equal((await invoke('rules:get')).skills[0].description, 'Thử');
+  assert.equal((await invoke('rules:delete-skill', 'demo')).skills.length, 0);
+  await assert.rejects(async () => invoke('rules:save-skill', '../evil', 'x'), /Tên kỹ năng/);
+
+  const att = await invoke('agent:attach', 'log.txt', Buffer.from('lỗi: x').toString('base64'));
+  assert.equal(att.kind, 'text');
+  assert.equal((await invoke('agent:state')).attachments.length, 1);
+  await assert.rejects(async () => invoke('agent:attach', '.env', Buffer.from('K=1').toString('base64')), /nhạy cảm/);
+  assert.equal(await invoke('agent:detach', att.id), true);
+  assert.equal((await invoke('agent:state')).attachments.length, 0);
+  const info = await invoke('studio:connection');
+  assert.equal(info.protocol, 2);
+  assert.equal('token' in info, false);
 });

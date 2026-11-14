@@ -18,7 +18,7 @@ Mỗi mục có tiêu chí nghiệm thu; thêm test cho mỗi mục.
 ## Giai đoạn 3 — Gần Antigravity hơn
 1. **Nhiều agent/phiên song song** (mỗi phiên một chat Gemini, hàng đợi bridge theo `sessionId`).
 2. **Trình duyệt nội bộ / xem trước web** cho dự án web (mở dev server, chụp màn hình gửi lại — tùy chọn, luôn hỏi quyền).
-3. **Quy tắc & kỹ năng theo project** (`.gps/rules.md`, `.gps/skills/*.md`) được nạp vào system prompt; có UI sửa.
+3. **[XONG] Quy tắc & kỹ năng theo project** (`.gps/rules.md`, `.gps/skills/*.md`) được nạp vào system prompt; có UI sửa.
 4. **Git tích hợp**: xem status/diff, tạo commit theo đề xuất (commit luôn cần duyệt; không push tự động).
 5. **Chỉ mục tìm kiếm ngữ nghĩa nhẹ** (BM25/ký hiệu đoạn mã) để chọn ngữ cảnh tốt hơn mà không cần embedding ngoài.
 6. **Terminal tương tác có duyệt** (tiến trình chạy lâu, xem log trực tiếp, dừng được).

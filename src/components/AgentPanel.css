@@ -144,3 +144,21 @@
 .agent-chip-meta { color: var(--text-dim, #64748b); }
 .agent-chip button { display: inline-flex; background: none; border: 0; padding: 2px; color: var(--text-muted, #94a3b8); cursor: pointer; border-radius: 50%; }
 .agent-chip button:hover { color: var(--accent-red, #ef4444); }
+
+/* Quy tắc & kỹ năng theo project (Giai đoạn 3, mục 3) */
+.agent-rules-badge { margin-left: auto; font-size: 10px; padding: 1px 7px; border-radius: 999px; border: 1px solid var(--border, rgba(148,163,184,.25)); font-weight: 600; }
+.agent-rules-badge.trusted { color: var(--accent-green, #10b981); border-color: rgba(16,185,129,.4); }
+.agent-rules-badge.review { color: var(--accent-amber, #f59e0b); border-color: rgba(245,158,11,.5); }
+.agent-rules-body { display: flex; flex-direction: column; gap: 6px; padding: 0 12px 10px; max-height: 340px; overflow-y: auto; }
+.agent-rules-status { font-size: 11.5px; color: var(--text-muted, #94a3b8); }
+.agent-rules-status.review { color: var(--accent-amber, #f59e0b); }
+.agent-rules-status.trusted { color: var(--accent-green, #10b981); }
+.agent-rules-note { margin: 0; font-size: 11px; line-height: 1.5; color: var(--text-dim, #64748b); }
+.agent-rules-label { display: flex; justify-content: space-between; font-weight: 600; font-size: 11.5px; color: var(--text-muted, #94a3b8); }
+.agent-rules-label span { font-weight: 400; color: var(--text-dim, #64748b); }
+.agent-rules-body textarea, .agent-rules-edit input { width: 100%; resize: vertical; background: var(--bg-input, #0a0e18); color: var(--text-main, #f1f5f9); border: 1px solid var(--border-medium, rgba(255,255,255,.12)); border-radius: 8px; padding: 7px 9px; font: inherit; line-height: 1.5; }
+.agent-rules-skill { display: flex; align-items: center; gap: 6px; padding: 5px 8px; border-radius: 7px; background: var(--bg-surface, #0d121f); border: 1px solid var(--border-subtle, rgba(255,255,255,.07)); }
+.agent-rules-skill > div { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.agent-rules-skill code { font-family: var(--font-mono, monospace); font-size: 11.5px; }
+.agent-rules-skill span { color: var(--text-dim, #64748b); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.agent-rules-edit { display: flex; flex-direction: column; gap: 6px; }

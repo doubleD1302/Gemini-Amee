@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import type { AgentAttachment, AgentPending, AgentPlan, AgentPlanStatus, AgentState, AgentStep, CheckpointInfo, DiffHunkView, PreviousSession } from '../types';
 import { MarkdownRenderer } from './MarkdownRenderer';
+import { RulesPanel } from './RulesPanel';
 import './AgentPanel.css';
 
 const EMPTY: AgentState = {
@@ -533,6 +534,7 @@ export function AgentPanel({ connected, workspaceOpen, onToast, onFilesChanged }
           </div>
         )}
       </div>
+      <RulesPanel onToast={onToast} />
     </div>
     </DiffPrefsContext.Provider>
   );
