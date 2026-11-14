@@ -1,0 +1,590 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Cẩm Nang Toàn Diện — Gemini Project Studio (Dành Cho Người Mới)</title>
+  <link rel="icon" type="image/svg+xml" href="public/favicon.svg"/>
+  <style>
+    :root {
+      --bg: #090d16;
+      --card-bg: #101626;
+      --card-border: rgba(255, 255, 255, 0.08);
+      --accent: #6366f1;
+      --accent-cyan: #38bdf8;
+      --accent-green: #10b981;
+      --accent-amber: #f59e0b;
+      --text: #f1f5f9;
+      --text-muted: #94a3b8;
+      --text-dim: #64748b;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      line-height: 1.6;
+      padding: 30px 20px;
+    }
+    .container {
+      max-width: 860px;
+      margin: 0 auto;
+    }
+    .header {
+      text-align: center;
+      margin-bottom: 40px;
+      padding-bottom: 30px;
+      border-bottom: 1px solid var(--card-border);
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(99, 102, 241, 0.12);
+      border: 1px solid rgba(99, 102, 241, 0.3);
+      color: #c7d2fe;
+      padding: 5px 14px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 600;
+      margin-bottom: 16px;
+    }
+    h1 {
+      font-size: 32px;
+      font-weight: 800;
+      letter-spacing: -0.8px;
+      margin-bottom: 12px;
+      background: linear-gradient(135deg, #ffffff, #c7d2fe 60%, #38bdf8);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .subtitle {
+      font-size: 15px;
+      color: var(--text-muted);
+      max-width: 620px;
+      margin: 0 auto;
+    }
+    .hero-banner {
+      background: linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(56, 189, 248, 0.05));
+      border: 1px solid rgba(99, 102, 241, 0.25);
+      border-radius: 16px;
+      padding: 24px;
+      margin-bottom: 35px;
+      display: flex;
+      align-items: center;
+      gap: 20px;
+    }
+    .hero-icon {
+      width: 56px;
+      height: 56px;
+      border-radius: 14px;
+      background: rgba(99, 102, 241, 0.2);
+      border: 1px solid rgba(99, 102, 241, 0.4);
+      display: grid;
+      place-items: center;
+      font-size: 26px;
+      flex-shrink: 0;
+    }
+    .hero-banner strong {
+      font-size: 16px;
+      color: #ffffff;
+      display: block;
+      margin-bottom: 6px;
+    }
+    .hero-banner p {
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 14px;
+      padding: 24px;
+      margin-bottom: 24px;
+    }
+    .card-title {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 18px;
+      font-weight: 700;
+      margin-bottom: 16px;
+      color: #ffffff;
+    }
+    .card-title .num {
+      width: 28px;
+      height: 28px;
+      border-radius: 8px;
+      background: var(--accent);
+      color: white;
+      display: grid;
+      place-items: center;
+      font-size: 13px;
+      font-weight: 800;
+    }
+    .step-list {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .step-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 14px;
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      border-radius: 10px;
+      padding: 16px;
+    }
+    .step-checkbox {
+      margin-top: 3px;
+      width: 18px;
+      height: 18px;
+      cursor: pointer;
+      accent-color: var(--accent);
+      flex-shrink: 0;
+    }
+    .step-content {
+      flex: 1;
+    }
+    .step-content strong {
+      font-size: 14px;
+      color: #ffffff;
+      display: block;
+      margin-bottom: 4px;
+    }
+    .step-content p {
+      font-size: 12.5px;
+      color: var(--text-muted);
+      margin-bottom: 8px;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: linear-gradient(135deg, #6366f1, #4f46e5);
+      color: white;
+      padding: 8px 14px;
+      border-radius: 8px;
+      text-decoration: none;
+      font-size: 12px;
+      font-weight: 600;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      cursor: pointer;
+    }
+    .btn.secondary {
+      background: rgba(255, 255, 255, 0.06);
+      border-color: rgba(255, 255, 255, 0.1);
+      color: var(--text);
+    }
+    .tab-header {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 16px;
+      background: rgba(0, 0, 0, 0.3);
+      padding: 4px;
+      border-radius: 10px;
+      border: 1px solid var(--card-border);
+    }
+    .tab-btn {
+      flex: 1;
+      padding: 10px;
+      border-radius: 7px;
+      border: none;
+      background: transparent;
+      color: var(--text-muted);
+      font-size: 12.5px;
+      font-weight: 600;
+      cursor: pointer;
+      text-align: center;
+      transition: all 0.2s;
+    }
+    .tab-btn.active {
+      background: var(--accent);
+      color: white;
+    }
+    .tab-pane {
+      display: none;
+    }
+    .tab-pane.active {
+      display: block;
+    }
+    .visual-flow {
+      display: grid;
+      grid-template-columns: 1fr auto 1fr auto 1fr;
+      align-items: center;
+      gap: 8px;
+      background: rgba(0, 0, 0, 0.25);
+      border-radius: 10px;
+      padding: 16px;
+      margin: 16px 0;
+      text-align: center;
+    }
+    .flow-node {
+      background: #171f33;
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+      padding: 12px;
+    }
+    .flow-node strong {
+      display: block;
+      font-size: 12.5px;
+      color: #ffffff;
+      margin-bottom: 2px;
+    }
+    .flow-node span {
+      font-size: 10.5px;
+      color: var(--text-dim);
+    }
+    .flow-node.highlight {
+      border-color: var(--accent);
+      background: #1d2542;
+    }
+    .arrow {
+      color: #818cf8;
+      font-size: 18px;
+      font-weight: bold;
+    }
+    .faq-item {
+      border-bottom: 1px solid var(--card-border);
+      padding: 14px 0;
+    }
+    .faq-item:last-child {
+      border-bottom: none;
+    }
+    .faq-q {
+      font-weight: 700;
+      font-size: 13.5px;
+      color: #ffffff;
+      margin-bottom: 6px;
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .faq-a {
+      font-size: 12.5px;
+      color: var(--text-muted);
+      line-height: 1.6;
+    }
+    .code-pill {
+      font-family: ui-monospace, Menlo, monospace;
+      background: rgba(255, 255, 255, 0.08);
+      color: #e2e8f0;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 11px;
+    }
+    .callout {
+      display: flex;
+      gap: 12px;
+      padding: 14px;
+      border-radius: 10px;
+      font-size: 12px;
+      margin: 12px 0;
+    }
+    .callout.green {
+      background: rgba(16, 185, 129, 0.1);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      color: #a7f3d0;
+    }
+    .callout.amber {
+      background: rgba(245, 158, 11, 0.1);
+      border: 1px solid rgba(245, 158, 11, 0.3);
+      color: #fde68a;
+    }
+    .prompt-box {
+      background: #090e18;
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 8px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+    }
+    .prompt-box p {
+      font-size: 12px;
+      color: #e2e8f0;
+      flex: 1;
+    }
+    .footer {
+      text-align: center;
+      margin-top: 50px;
+      padding-top: 20px;
+      border-top: 1px solid var(--card-border);
+      color: var(--text-dim);
+      font-size: 11.5px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- Header -->
+    <header class="header">
+      <div class="badge">✦ Hướng Dẫn Dành Riêng Cho Người Mới &amp; Nontech</div>
+      <h1>Gemini Project Studio</h1>
+      <p class="subtitle">
+        Trợ lý phân tích và hiểu mã nguồn dự án bằng trí tuệ nhân tạo Gemini Web. Hoàn toàn miễn phí, không cần API key và tuyệt đối an toàn 100% cho file của bạn.
+      </p>
+    </header>
+
+    <!-- Hero Safety Banner -->
+    <div class="hero-banner">
+      <div class="hero-icon">🛡️</div>
+      <div>
+        <strong>Cam Kết An Toàn Tuyệt Đối (Chế Độ Chỉ Đọc - Read-Only)</strong>
+        <p>
+          Bạn có thể hoàn toàn yên tâm khi mở bất kỳ thư mục dự án nào: Studio <b>chỉ đọc văn bản</b> để giúp Gemini hiểu dự án, tuyệt đối <b>không sửa, không xóa và không ghi đè</b> bất kỳ dữ liệu nào trên máy tính của bạn.
+        </p>
+      </div>
+    </div>
+
+    <!-- Step 1: Chuẩn bị môi trường -->
+    <div class="card">
+      <div class="card-title">
+        <span class="num">1</span>
+        <span>Chuẩn bị trong 2 phút (Chỉ làm 1 lần duy nhất)</span>
+      </div>
+      <div class="step-list">
+        <div class="step-item">
+          <input type="checkbox" class="step-checkbox" id="chk1"/>
+          <div class="step-content">
+            <strong>Cài đặt Node.js (phiên bản 22 LTS trở lên)</strong>
+            <p>
+              Node.js là phần mềm chạy nền giúp giao diện Studio hoạt động trên máy tính của bạn. Nếu máy bạn chưa có, hãy tải bản cài đặt Windows tại link dưới (bấm Next theo mặc định là xong):
+            </p>
+            <a href="https://nodejs.org/en/download" target="_blank" class="btn">
+              Tải Node.js chính thức (nodejs.org) ↗
+            </a>
+          </div>
+        </div>
+
+        <div class="step-item">
+          <input type="checkbox" class="step-checkbox" id="chk2"/>
+          <div class="step-content">
+            <strong>Khởi động ứng dụng bằng file start-windows.bat</strong>
+            <p>
+              Sau khi cài Node.js, chỉ cần nhấp đúp vào file <span class="code-pill">start-windows.bat</span> trong thư mục này. Lần đầu tiên chạy, máy sẽ tự động tải các thư viện cần thiết trong khoảng 1-2 phút, sau đó cửa sổ Studio sẽ tự động mở lên!
+            </p>
+            <div class="callout amber">
+              💡 <b>Mẹo sửa lỗi nhanh:</b> Nếu tải bị lỗi do mạng yếu, hãy nhấp đúp vào file <span class="code-pill">repair-windows.bat</span> để hệ thống tự động sửa chữa.
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 2: Chọn cách kết nối -->
+    <div class="card">
+      <div class="card-title">
+        <span class="num">2</span>
+        <span>Chọn cách trò chuyện với Gemini</span>
+      </div>
+
+      <div class="tab-header">
+        <button class="tab-btn active" onclick="switchTab('tab-ext')">Cách 1: Tự động qua Extension (Hỗ trợ cả Edge &amp; Chrome)</button>
+        <button class="tab-btn" onclick="switchTab('tab-manual')">Cách 2: Thủ công không cần cài gì (100% không lo lỗi)</button>
+      </div>
+
+      <!-- Tab 1: Extension -->
+      <div id="tab-ext" class="tab-pane active">
+        <p style="color: var(--text-muted); font-size: 13px; margin-bottom: 14px;">
+          Extension hoạt động hoàn hảo trên cả <b>Microsoft Edge</b> (có sẵn trên Windows) và <b>Google Chrome</b>:
+        </p>
+
+        <div class="visual-flow">
+          <div class="flow-node highlight">
+            <strong>Studio Desktop</strong>
+            <span>Nhập câu hỏi &amp; chọn file</span>
+          </div>
+          <div class="arrow">➔</div>
+          <div class="flow-node">
+            <strong>Edge / Chrome Extension</strong>
+            <span>Cầu nối an toàn nội bộ</span>
+          </div>
+          <div class="arrow">➔</div>
+          <div class="flow-node highlight">
+            <strong>Gemini Web</strong>
+            <span>gemini.google.com</span>
+          </div>
+        </div>
+
+        <div class="step-list">
+          <div class="step-item">
+            <input type="checkbox" class="step-checkbox"/>
+            <div class="step-content">
+              <strong>Bước 2.1: Mở thư mục Extension</strong>
+              <p>Trong ứng dụng Studio, chọn tab <b>Bridge</b> ở thanh bên phải rồi bấm <b>"Mở thư mục Extension trên máy"</b>.</p>
+            </div>
+          </div>
+
+          <div class="step-item">
+            <input type="checkbox" class="step-checkbox"/>
+            <div class="step-content">
+              <strong>Bước 2.2A: Cài vào Microsoft Edge (Nếu bạn dùng Edge trên Windows)</strong>
+              <p>
+                1. Mở Microsoft Edge, gõ <span class="code-pill">edge://extensions</span> vào thanh địa chỉ.<br>
+                2. Bật công tắc <b>"Chế độ dành cho nhà phát triển" (Developer mode)</b> ở cột menu bên trái.<br>
+                3. Bấm nút <b>"Tải phần mở rộng chưa giải nén" (Load unpacked)</b> ở trên đầu rồi chọn thư mục extension.
+              </p>
+            </div>
+          </div>
+
+          <div class="step-item">
+            <input type="checkbox" class="step-checkbox"/>
+            <div class="step-content">
+              <strong>Bước 2.2B: Cài vào Google Chrome (Nếu bạn dùng Chrome)</strong>
+              <p>
+                1. Mở Google Chrome, gõ <span class="code-pill">chrome://extensions</span> vào thanh địa chỉ.<br>
+                2. Bật công tắc <b>"Developer mode"</b> ở góc trên bên phải.<br>
+                3. Bấm nút <b>"Load unpacked" (Tải tiện ích đã giải nén)</b> rồi chọn thư mục extension.
+              </p>
+            </div>
+          </div>
+
+          <div class="step-item">
+            <input type="checkbox" class="step-checkbox"/>
+            <div class="step-content">
+              <strong>Bước 2.3: Ghép nối trong 1 click</strong>
+              <p>Trong Studio, bấm nút <b>"Copy mã kết nối (Pairing JSON)"</b>. Sau đó bấm vào biểu tượng Extension hình ngôi sao ✦ trên thanh công cụ trình duyệt (Edge hoặc Chrome), chọn <b>"⚡ Tự động dán"</b> rồi bấm <b>"Lưu &amp; Kết nối"</b>.</p>
+            </div>
+          </div>
+
+          <div class="step-item">
+            <input type="checkbox" class="step-checkbox"/>
+            <div class="step-content">
+              <strong>Bước 2.4: Mở tab Gemini Web</strong>
+              <p>Mở trang web <span class="code-pill">https://gemini.google.com/app</span> bằng tài khoản Google của bạn trên Edge hoặc Chrome và giữ tab đó mở. Bạn đã hoàn thành kết nối!</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab 2: Manual -->
+      <div id="tab-manual" class="tab-pane">
+        <p style="color: var(--text-muted); font-size: 13px; margin-bottom: 14px;">
+          Nếu bạn không muốn cài Extension hoặc dùng máy tính công ty bị chặn tiện ích, bạn vẫn có thể dùng Studio cực kỳ thuận tiện với 3 bước Copy - Dán:
+        </p>
+
+        <div class="step-list">
+          <div class="step-item">
+            <div class="step-content">
+              <strong>1. Nhập câu hỏi trong Studio</strong>
+              <p>Studio sẽ tự động tìm kiếm tối đa 18 file mã nguồn quan trọng nhất liên quan đến câu hỏi của bạn và gộp thành một đoạn văn bản hoàn chỉnh.</p>
+            </div>
+          </div>
+          <div class="step-item">
+            <div class="step-content">
+              <strong>2. Bấm Gửi (hoặc Soạn context)</strong>
+              <p>Khi Extension chưa kết nối, Studio sẽ <b>tự động copy toàn bộ câu hỏi và mã nguồn</b> vào bộ nhớ tạm (Clipboard) của bạn!</p>
+            </div>
+          </div>
+          <div class="step-item">
+            <div class="step-content">
+              <strong>3. Dán vào Gemini Web và đưa kết quả về Studio</strong>
+              <p>Mở tab <span class="code-pill">gemini.google.com</span>, bấm Ctrl+V để hỏi. Sau khi Gemini trả lời xong, bạn copy kết quả, quay lại Studio bấm <b>"Dán câu trả lời thủ công"</b> (hoặc bấm ⚡ Dán nhanh từ bộ nhớ tạm). Câu trả lời sẽ hiện ra với định dạng code đẹp mắt!</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 3: Mẫu câu hỏi cho người nontech -->
+    <div class="card">
+      <div class="card-title">
+        <span class="num">3</span>
+        <span>Mẹo đặt câu hỏi thông minh cho người không chuyên</span>
+      </div>
+      <p style="font-size: 12.5px; color: var(--text-muted); margin-bottom: 14px;">
+        Bạn không cần biết lập trình! Hãy sao chép những câu hỏi mẫu dưới đây để nhờ Gemini phân tích dự án giúp bạn:
+      </p>
+
+      <div class="prompt-box">
+        <p><b>1. Hiểu tổng quan:</b> "Hãy giải thích cho tôi project này có chức năng gì, giải quyết bài toán nào và dành cho đối tượng người dùng nào bằng ngôn ngữ bình dân, dễ hiểu nhất."</p>
+        <button class="btn secondary" onclick="copyText(this, 'Hãy giải thích cho tôi project này có chức năng gì, giải quyết bài toán nào và dành cho đối tượng người dùng nào bằng ngôn ngữ bình dân, dễ hiểu nhất.')">Copy câu này</button>
+      </div>
+
+      <div class="prompt-box">
+        <p><b>2. Hướng dẫn chạy thử:</b> "Hãy hướng dẫn tôi cách cài đặt các công cụ và các lệnh để chạy thử ứng dụng này trên máy tính Windows từng bước một từ A đến Z."</p>
+        <button class="btn secondary" onclick="copyText(this, 'Hãy hướng dẫn tôi cách cài đặt các công cụ và các lệnh để chạy thử ứng dụng này trên máy tính Windows từng bước một từ A đến Z.')">Copy câu này</button>
+      </div>
+
+      <div class="prompt-box">
+        <p><b>3. Kiểm tra chất lượng:</b> "Phân tích các rủi ro, lỗi tiềm ẩn, vấn đề bảo mật và những điểm code chưa tốt trong project này. Đưa ra giải pháp sửa cụ thể."</p>
+        <button class="btn secondary" onclick="copyText(this, 'Phân tích các rủi ro, lỗi tiềm ẩn, vấn đề bảo mật và những điểm code chưa tốt trong project này. Đưa ra giải pháp sửa cụ thể.')">Copy câu này</button>
+      </div>
+
+      <div class="prompt-box">
+        <p><b>4. Soạn tài liệu:</b> "Viết cho tôi một bản hướng dẫn sử dụng (User Manual) chi tiết cho dự án này để người dùng thông thường biết cách thao tác."</p>
+        <button class="btn secondary" onclick="copyText(this, 'Viết cho tôi một bản hướng dẫn sử dụng (User Manual) chi tiết cho dự án này để người dùng thông thường biết cách thao tác.')">Copy câu này</button>
+      </div>
+    </div>
+
+    <!-- Step 4: Câu hỏi thường gặp (FAQ) -->
+    <div class="card">
+      <div class="card-title">
+        <span class="num">?</span>
+        <span>Giải đáp thắc mắc thường gặp (FAQ)</span>
+      </div>
+
+      <div class="faq-item">
+        <div class="faq-q">1. Code của tôi có bị gửi lên mạng hay bị ai xem trộm không?</div>
+        <div class="faq-a">
+          Dữ liệu code chỉ được gửi trực tiếp đến tài khoản <b>Gemini Web chính chủ của bạn tại Google</b> khi bạn gửi câu hỏi. Ngoài Google ra, không có bất kỳ máy chủ bên thứ ba nào nhận dữ liệu này. Cầu nối giữa Studio và Extension chỉ chạy cục bộ bên trong máy tính của bạn (địa chỉ 127.0.0.1).
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <div class="faq-q">2. Tôi có cần phải mua tài khoản trả phí hay đăng ký API key không?</div>
+        <div class="faq-a">
+          <b>Hoàn toàn không!</b> Studio tận dụng giao diện Gemini Web miễn phí mà bạn thường dùng hằng ngày trên trình duyệt, không cần bất kỳ API key hay thẻ tín dụng nào.
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <div class="faq-q">3. Nếu lỡ tay tắt cửa sổ đen (Command Prompt) thì sao?</div>
+        <div class="faq-a">
+          Cửa sổ đen là nơi chạy máy chủ cục bộ cho Studio. Nếu bạn lỡ tắt, ứng dụng Studio cũng sẽ đóng lại. Muốn dùng lại, bạn chỉ cần nhấp đúp lại file <span class="code-pill">start-windows.bat</span>.
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <div class="faq-q">4. Các file mật khẩu (.env, credentials) có bị gửi đi không?</div>
+        <div class="faq-a">
+          Studio đã tích hợp sẵn bộ lọc an ninh: tự động bỏ qua toàn bộ file bí mật (.env, key, id_rsa, database password...) cũng như các thư mục nặng như node_modules, .git để đảm bảo an toàn tối đa cho bạn.
+        </div>
+      </div>
+    </div>
+
+    <footer class="footer">
+      Gemini Project Studio · MVP v0.2.0 · Thiết kế tối giản, chuyên nghiệp và thân thiện cho mọi người dùng
+    </footer>
+  </div>
+
+  <script>
+    function switchTab(tabId) {
+      document.querySelectorAll('.tab-pane').forEach(el => el.classList.remove('active'));
+      document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+      document.getElementById(tabId).classList.add('active');
+      event.target.classList.add('active');
+    }
+
+    async function copyText(btn, text) {
+      try {
+        await navigator.clipboard.writeText(text);
+        const oldText = btn.textContent;
+        btn.textContent = '✓ Đã chép!';
+        btn.style.color = '#6ee7b7';
+        setTimeout(() => {
+          btn.textContent = oldText;
+          btn.style.color = '';
+        }, 2000);
+      } catch (err) {
+        alert('Không thể sao chép: ' + err);
+      }
+    }
+  </script>
+</body>
+</html>

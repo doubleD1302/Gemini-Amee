@@ -1,0 +1,82 @@
+export interface ProjectFile { path:string; name:string; size:number; }
+export interface WorkspaceInfo { name:string; root:string; files:ProjectFile[]; skipped:number; truncated:boolean; }
+export interface BridgeConnection { url:string; connected:boolean; }
+export interface Prepared { prompt:string; included:string[]; totalFiles:number; truncated:boolean; characters:number; }
+export interface SearchMatch { path:string; line:number; snippet:string; }
+export type JobStatus = 'queued'|'dispatched'|'sent'|'streaming'|'final'|'error'|'cancelled';
+export interface Job { id:string; question:string; included:string[]; status:JobStatus; answer?:string; characters?:number; }
+
+export type MessageRole = 'user' | 'assistant';
+
+export interface ChatMessage {
+  id: string;
+  role: MessageRole;
+  text: string;
+  jobId?: string;
+  status?: JobStatus | 'manual';
+  included?: string[];
+  preparedPrompt?: string;
+  timestamp?: number;
+}
+
+export interface ChatSession {
+  id: string;
+  title: string;
+  createdAt: number;
+  updatedAt: number;
+  workspaceRoot?: string;
+  workspaceName?: string;
+  model?: string;
+  mode?: string;
+  messages: ChatMessage[];
+}
+export type AgentStatus = 'idle'|'running'|'waiting_approval'|'waiting_user'|'done'|'error'|'cancelled';
+export interface AgentStep {
+  id: string; at: number;
+  type: 'info'|'user'|'assistant'|'tool'|'error';
+  text?: string; tool?: string; label?: string; summary?: string; diff?: string; output?: string;
+  status?: 'running'|'waiting_approval'|'done'|'failed'|'rejected'|'error';
+  checkpoint?: string;
+}
+export interface AgentPending { id: string; tool: string; label: string; summary: string; diff: string; kind: 'edit'|'exec'; source: 'agent'|'vibe'; createdAt: number; }
+export interface AgentState {
+  id: string|null; goal: string; status: AgentStatus; turn: number; maxTurns: number;
+  conversationUrl: string|null; jobId: string|null; liveText: string; error: string; question: string;
+  policy: { autoEdits: boolean };
+  steps: AgentStep[]; pending: AgentPending[];
+}
+export interface CheckpointInfo { id: string; path: string; created: boolean; at: number; source: string; note: string; undone: boolean; }
+export interface AgentApi {
+  state(): Promise<AgentState>;
+  start(goal: string): Promise<AgentState>;
+  reply(text: string): Promise<AgentState>;
+  retry(): Promise<AgentState>;
+  cancel(): Promise<AgentState>;
+  approve(id: string, decision: 'approve'|'reject'|'approve_all_edits', reason?: string): Promise<{ ok: boolean }>;
+  setPolicy(policy: { autoEdits: boolean }): Promise<{ autoEdits: boolean }>;
+  jobPrompt(id: string): Promise<string|null>;
+  checkpoints(): Promise<CheckpointInfo[]>;
+  undo(id: string, force?: boolean): Promise<CheckpointInfo>;
+  onState(fn: (state: AgentState) => void): () => void;
+}
+export interface StudioApi {
+  init():Promise<{workspace:WorkspaceInfo|null;connection:BridgeConnection}>;
+  chooseFolder():Promise<WorkspaceInfo|null>;
+  readFile(path:string):Promise<{path:string;content:string;size:number}>;
+  writeFile(path:string,content:string):Promise<{path:string;size:number;backup?:string|null;checkpoint?:string}>;
+  search(query:string):Promise<SearchMatch[]>;
+  prepare(question:string,activePath:string,isFollowUp?:boolean):Promise<Prepared>;
+  send(question:string,activePath:string,isFollowUp?:boolean):Promise<Job>;
+  connection():Promise<BridgeConnection>;
+  pairInfo():Promise<string>;
+  copy(value:string):Promise<boolean>;
+  readClipboard():Promise<string>;
+  openGemini(browser?: 'default' | 'edge' | 'chrome'): Promise<boolean | void>;
+  showExtension():Promise<string>;
+  importReply(id:string,text:string):Promise<boolean>;
+  agent: AgentApi;
+  onJob(fn:(job:Job)=>void):()=>void;
+  onConnection(fn:(conn:BridgeConnection)=>void):()=>void;
+  onFileWritten?(fn:(data:{path:string})=>void):()=>void;
+}
+declare global { interface Window {studio:StudioApi;} }

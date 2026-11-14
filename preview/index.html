@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" type="image/svg+xml" href="../public/favicon.svg">
+  <link rel="stylesheet" href="../src/styles.css">
+  <title>Gemini Project Studio — Design Preview</title>
+</head>
+<body>
+  <div class="app-shell">
+    <!-- Header -->
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark">
+          <svg width="20" height="20" viewBox="0 0 128 128" fill="none">
+            <path d="M 64 22 C 64 43 43 64 22 64 C 43 64 64 85 64 106 C 64 85 85 64 106 64 C 85 64 64 43 64 22 Z" fill="url(#prevGrad)"/>
+            <circle cx="64" cy="64" r="7" fill="#ffffff"/>
+            <defs>
+              <linearGradient id="prevGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#38bdf8"/>
+                <stop offset="100%" stop-color="#a855f7"/>
+              </linearGradient>
+            </defs>
+          </svg>
+        </div>
+        <span class="brand-text">GEMINI<span class="brand-soft"> / PROJECT STUDIO</span></span>
+        <span class="version-tag">MVP v0.2</span>
+      </div>
+      <div class="top-actions">
+        <button class="help-button">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+          <span>Hướng dẫn người mới</span>
+        </button>
+        <div class="status-pill connected">
+          <span class="status-light"></span>
+          <span>Bridge connected</span>
+        </div>
+        <button class="ghost-button compact">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+          <span>Gemini Web</span>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- App Grid -->
+    <div class="app-grid">
+      <!-- Left Sidebar -->
+      <aside class="sidebar">
+        <div class="section-label">
+          <span>MÃ NGUỒN DỰ ÁN</span>
+          <button class="icon-button" title="Chọn project">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+          </button>
+        </div>
+        <button class="project-selector">
+          <div class="project-logo">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+          </div>
+          <div class="project-meta">
+            <strong>my-react-app</strong>
+            <span>28 files</span>
+          </div>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
+
+        <div class="sidebar-search">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input placeholder="Tìm file hoặc nội dung..." readonly>
+        </div>
+
+        <div class="file-filter-tabs">
+          <button class="active">Tất cả</button>
+          <button>Code</button>
+          <button>Tài liệu</button>
+          <button>Config</button>
+        </div>
+
+        <div class="explorer-header">
+          <span>DANH SÁCH FILE</span>
+          <span>28 files</span>
+        </div>
+
+        <div class="file-list">
+          <button class="file-row folder-row" style="padding-left:12px">⌄ 📁 <span class="file-label">src</span></button>
+          <button class="file-row folder-row" style="padding-left:24px">⌄ 📁 <span class="file-label">components</span></button>
+          <button class="file-row" style="padding-left:48px">📄 <span class="file-label">Header.tsx</span></button>
+          <button class="file-row" style="padding-left:48px">📄 <span class="file-label">LoginForm.tsx</span></button>
+          <button class="file-row active" style="padding-left:36px">📄 <span class="file-label">App.tsx</span></button>
+          <button class="file-row" style="padding-left:36px">📄 <span class="file-label">main.tsx</span></button>
+          <button class="file-row" style="padding-left:36px">📄 <span class="file-label">styles.css</span></button>
+          <button class="file-row folder-row" style="padding-left:12px">› 📁 <span class="file-label">public</span></button>
+          <button class="file-row" style="padding-left:24px">⚙ <span class="file-label">package.json</span></button>
+          <button class="file-row" style="padding-left:24px">📝 <span class="file-label">README.md</span></button>
+          <button class="file-row" style="padding-left:24px">⚙ <span class="file-label">vite.config.ts</span></button>
+        </div>
+
+        <div class="sidebar-foot">
+          <div class="sidebar-foot-icon">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/></svg>
+          </div>
+          <div>
+            <strong>Read-only workspace</strong>
+            <span>An toàn 100% · Không sửa file</span>
+          </div>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+        </div>
+      </aside>
+
+      <!-- Center Chat -->
+      <main class="chat-panel">
+        <div class="chat-header">
+          <div class="chat-heading">
+            <div class="chat-heading-icon">✦</div>
+            <div>
+              <h1>Trợ lý dự án Gemini</h1>
+              <span>Hiểu toàn diện mã nguồn · Không cần API key</span>
+            </div>
+          </div>
+          <div class="chat-model">● Gemini Web ⌄</div>
+        </div>
+
+        <div class="chat-scroll">
+          <div class="message-list">
+            <article class="message user">
+              <div class="message-avatar">BẠN</div>
+              <div class="message-body">
+                <div class="message-label">Bạn</div>
+                <div class="message-text">Giải thích cho tôi kiến trúc dự án này và cách chạy thử app?</div>
+              </div>
+            </article>
+
+            <article class="message assistant">
+              <div class="message-avatar">✦</div>
+              <div class="message-body">
+                <div class="message-label">Gemini Web <span class="message-status final">✓ Đã nhận phản hồi</span></div>
+                <div class="message-text">
+                  <div class="markdown-content">
+                    <p class="md-p">Dự án của bạn là một ứng dụng web xây dựng bằng <strong>React 19</strong> và <strong>TypeScript</strong>, sử dụng <strong>Vite</strong> để đóng gói và phát triển.</p>
+                    <h3 class="md-h3">1. Cấu trúc thư mục chính</h3>
+                    <ul class="md-ul">
+                      <li><code>src/App.tsx</code>: Giao diện chính và luồng xử lý trạng thái.</li>
+                      <li><code>src/components/</code>: Các thành phần UI có thể tái sử dụng.</li>
+                      <li><code>desktop/</code>: Lớp cầu nối Electron an toàn.</li>
+                    </ul>
+                    <h3 class="md-h3">2. Lệnh chạy thử app</h3>
+                    <div class="code-block-wrapper">
+                      <div class="code-block-header">
+                        <span class="code-block-lang">BASH</span>
+                        <button class="code-copy-btn">Sao chép mã</button>
+                      </div>
+                      <pre class="code-block-pre"><code># Cài đặt thư viện
+npm install
+
+# Khởi chạy chế độ phát triển
+npm run dev</code></pre>
+                    </div>
+                  </div>
+                </div>
+                <div class="context-chips">
+                  <span>Ngữ cảnh: <strong>3 file</strong> (package.json, src/App.tsx, src/main.tsx)</span>
+                </div>
+              </div>
+            </article>
+          </div>
+        </div>
+
+        <div class="composer-area">
+          <div class="composer">
+            <textarea readonly rows="3" placeholder="Hỏi Gemini bất cứ điều gì về dự án của bạn..."></textarea>
+            <div class="composer-actions">
+              <div class="composer-hints">
+                <span>✦ Tự động gom code</span>
+                <span>🔒 Chỉ đọc (Read-only)</span>
+              </div>
+              <div class="composer-buttons">
+                <button class="toolbar-action">✦ Soạn context</button>
+                <button class="send-button">↑</button>
+              </div>
+            </div>
+          </div>
+          <div class="composer-note">
+            <span>Enter để gửi · Shift+Enter để xuống dòng</span>
+            <button>📋 Dán câu trả lời thủ công</button>
+          </div>
+        </div>
+      </main>
+
+      <!-- Right Inspector -->
+      <aside class="inspector">
+        <div class="inspector-top">
+          <div class="inspector-caption">INSPECTOR</div>
+          <div class="inspector-tabs">
+            <button class="selected">Xem file</button>
+            <button>Bridge <span class="tiny-dot-green"></span></button>
+          </div>
+        </div>
+        <div class="preview-pane">
+          <div class="preview-path">
+            <span>src/App.tsx</span>
+            <div class="preview-toggle-group">
+              <button class="active">Code</button>
+            </div>
+          </div>
+          <div class="preview-code">
+            <pre><span class="code-line"><i>1</i><span>import React from 'react';</span></span><span class="code-line"><i>2</i><span>import { MainApp } from './components/MainApp';</span></span><span class="code-line"><i>3</i><span> </span></span><span class="code-line"><i>4</i><span>export default function App() {</span></span><span class="code-line"><i>5</i><span>  return &lt;MainApp /&gt;;</span></span><span class="code-line"><i>6</i><span>}</span></span></pre>
+          </div>
+          <div class="inspector-info">
+            <div class="inspector-info-row"><span>Dự án</span><b>my-react-app</b></div>
+            <div class="inspector-info-row"><span>Files đã quét</span><b>28</b></div>
+            <div class="inspector-info-row"><span>Bỏ qua</span><b>164</b></div>
+          </div>
+        </div>
+        <div class="inspector-footer">
+          <span>Local execution <strong>disabled</strong> (Chỉ đọc)</span>
+        </div>
+      </aside>
+    </div>
+  </div>
+</body>
+</html>

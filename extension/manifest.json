@@ -1,0 +1,44 @@
+{
+  "manifest_version": 3,
+  "name": "Gemini Project Studio Bridge",
+  "description": "Cầu nối dự án mã nguồn an toàn giữa Gemini Project Studio và Gemini Web (Tương thích hoàn hảo cả Google Chrome và Microsoft Edge).",
+  "version": "0.3.0",
+  "permissions": [
+    "storage"
+  ],
+  "host_permissions": [
+    "http://127.0.0.1/*"
+  ],
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Gemini Project Studio Bridge",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://gemini.google.com/*"
+      ],
+      "js": [
+        "md.js",
+        "selectors.js",
+        "content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ]
+}

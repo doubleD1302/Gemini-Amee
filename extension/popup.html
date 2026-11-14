@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Gemini Project Studio Bridge</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #0b0f19;
+      color: #e2e8f0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-size: 12px;
+      line-height: 1.5;
+      width: 360px;
+      padding: 16px;
+    }
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 14px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .brand-icon {
+      width: 28px;
+      height: 28px;
+      border-radius: 8px;
+      display: block;
+    }
+    .brand-title {
+      font-size: 13px;
+      font-weight: 700;
+      color: #f8fafc;
+      letter-spacing: -0.2px;
+    }
+    .brand-sub {
+      font-size: 10px;
+      color: #94a3b8;
+    }
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 8px;
+      border-radius: 999px;
+      font-size: 10px;
+      font-weight: 600;
+      background: #1e2538;
+      border: 1px solid #333f5c;
+      color: #94a3b8;
+    }
+    .status-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: #e2a03f;
+    }
+    .status-badge.connected {
+      background: #0f2e24;
+      border-color: #1a5c48;
+      color: #6ee7b7;
+    }
+    .status-badge.connected .status-dot {
+      background: #10b981;
+      box-shadow: 0 0 8px #10b981;
+    }
+    .desc {
+      color: #94a3b8;
+      font-size: 11px;
+      line-height: 1.5;
+      margin-bottom: 14px;
+    }
+    .card {
+      background: #131929;
+      border: 1px solid rgba(255, 255, 255, 0.07);
+      border-radius: 10px;
+      padding: 12px;
+      margin-bottom: 12px;
+    }
+    .field-label {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 11px;
+      font-weight: 600;
+      color: #cbd5e1;
+      margin-bottom: 6px;
+    }
+    .btn-quick-paste {
+      background: none;
+      border: none;
+      color: #818cf8;
+      font-size: 10.5px;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .btn-quick-paste:hover {
+      color: #a5b4fc;
+      text-decoration: underline;
+    }
+    textarea {
+      width: 100%;
+      min-height: 70px;
+      resize: vertical;
+      background: #0a0d16;
+      color: #f1f5f9;
+      border: 1px solid #27334d;
+      border-radius: 8px;
+      padding: 8px 10px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 11px;
+      line-height: 1.4;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    textarea:focus {
+      border-color: #6366f1;
+    }
+    .btn-group {
+      display: flex;
+      gap: 8px;
+      margin-top: 10px;
+    }
+    button.primary {
+      flex: 1;
+      background: linear-gradient(135deg, #6366f1, #4f46e5);
+      border: 1px solid #818cf8;
+      border-radius: 8px;
+      padding: 9px 12px;
+      color: #ffffff;
+      font-size: 11.5px;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      transition: all 0.2s;
+    }
+    button.primary:hover {
+      filter: brightness(1.1);
+    }
+    button.secondary {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      padding: 9px 12px;
+      color: #cbd5e1;
+      font-size: 11.5px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    button.secondary:hover {
+      background: #27354d;
+      color: #f8fafc;
+    }
+    .status-msg {
+      margin-top: 10px;
+      padding: 8px 10px;
+      border-radius: 7px;
+      font-size: 11px;
+      line-height: 1.4;
+      background: #182133;
+      border: 1px solid #283754;
+      color: #94a3b8;
+    }
+    .status-msg.success {
+      background: #0f2e24;
+      border-color: #1a5c48;
+      color: #a7f3d0;
+    }
+    .status-msg.error {
+      background: #36171d;
+      border-color: #6b212e;
+      color: #fca5a5;
+    }
+    .open-gemini-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      width: 100%;
+      background: #1e1b4b;
+      border: 1px solid #4338ca;
+      color: #c7d2fe;
+      padding: 9px;
+      border-radius: 8px;
+      font-size: 11.5px;
+      font-weight: 600;
+      text-decoration: none;
+      margin-top: 10px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .open-gemini-btn:hover {
+      background: #2e287a;
+      color: #ffffff;
+    }
+    .steps {
+      margin-top: 12px;
+      border-top: 1px solid rgba(255, 255, 255, 0.06);
+      padding-top: 10px;
+    }
+    .steps-title {
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      color: #64748b;
+      margin-bottom: 6px;
+    }
+    .step-item {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      font-size: 10.5px;
+      color: #94a3b8;
+      margin-bottom: 4px;
+    }
+    .step-num {
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: #1e293b;
+      color: #818cf8;
+      display: grid;
+      place-items: center;
+      font-size: 9px;
+      font-weight: 700;
+      flex-shrink: 0;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="brand">
+      <img src="icons/icon32.png" alt="Logo" class="brand-icon"/>
+      <div>
+        <div class="brand-title">Gemini Project Studio</div>
+        <div class="brand-sub">Chrome &amp; Edge Companion Bridge</div>
+      </div>
+    </div>
+    <div id="statusBadge" class="status-badge">
+      <span class="status-dot"></span>
+      <span id="badgeText">Offline</span>
+    </div>
+  </div>
+
+  <p class="desc">
+    Cầu nối an toàn đưa ngữ cảnh code từ ứng dụng Desktop sang tài khoản Gemini Web của bạn trên Google Chrome hoặc Microsoft Edge mà không cần API key.
+  </p>
+
+  <div class="card">
+    <div class="field-label">
+      <span>Mã kết nối (Pairing JSON)</span>
+      <button id="btnQuickPaste" class="btn-quick-paste" title="Tự động đọc mã từ bộ nhớ tạm">
+        ⚡ Tự động dán
+      </button>
+    </div>
+    <textarea id="pair" spellcheck="false" placeholder='Bấm "Copy pairing JSON" trong ứng dụng Studio rồi dán vào đây...'></textarea>
+    <div class="btn-group">
+      <button id="save" class="primary">Lưu &amp; Kết nối</button>
+      <button id="check" class="secondary">Kiểm tra</button>
+      <button id="reloadExt" class="secondary" title="Tải lại tiện ích">🔄 Tải lại</button>
+    </div>
+    <div id="status" class="status-msg">Chưa kết nối</div>
+    <button id="openGemini" class="open-gemini-btn">
+      🌐 Mở Gemini Web (gemini.google.com) ↗
+    </button>
+  </div>
+
+  <div class="steps">
+    <div class="steps-title">3 bước đơn giản cho người mới</div>
+    <div class="step-item"><span class="step-num">1</span> Bấm "Copy pairing JSON" trong tab Bridge của Studio</div>
+    <div class="step-item"><span class="step-num">2</span> Bấm "Tự động dán" hoặc Ctrl+V vào ô trên rồi bấm "Lưu & Kết nối"</div>
+    <div class="step-item"><span class="step-num">3</span> Mở Gemini Web, đăng nhập và giữ tab đó mở</div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
