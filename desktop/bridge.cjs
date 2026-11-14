@@ -26,6 +26,12 @@ function loadOrCreateState(file) {
   return state;
 }
 
+/** Ghi lại token + cổng (dùng khi người dùng đổi cổng trong Cài đặt). */
+function saveState(file, state) {
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, JSON.stringify({ token: state.token, port: state.port }), { encoding: 'utf8', mode: 0o600 });
+}
+
 class Bridge extends EventEmitter {
   constructor(opts = {}) {
     super();
@@ -225,4 +231,4 @@ class Bridge extends EventEmitter {
     }
   }
 }
-module.exports = { Bridge, loadOrCreateState, VERSION, PROTOCOL, DEFAULT_PORT };
+module.exports = { Bridge, loadOrCreateState, saveState, VERSION, PROTOCOL, DEFAULT_PORT };

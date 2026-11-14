@@ -441,7 +441,14 @@ function buildCondensedTree(files, maxChars = 3500) {
   return lines.join('\n');
 }
 
-function buildContext(root, question, { activePath = '', maxFiles = CONTEXT_DEFAULT_FILES, maxCharacters = CONTEXT_DEFAULT_CHARS, isFollowUp = false } = {}) {
+// Giới hạn ngữ cảnh có thể chỉnh trong Cài đặt (mặc định = CONTEXT_DEFAULT_*; hằng số `limits` giữ nguyên là giá trị mặc định).
+let ctxFiles = CONTEXT_DEFAULT_FILES, ctxChars = CONTEXT_DEFAULT_CHARS;
+function configureContext({ files, chars } = {}) {
+  if (Number.isInteger(files) && files >= 1 && files <= 40) ctxFiles = files;
+  if (Number.isInteger(chars) && chars >= 8000 && chars <= 200000) ctxChars = chars;
+  return { files: ctxFiles, chars: ctxChars };
+}
+function buildContext(root, question, { activePath = '', maxFiles = ctxFiles, maxCharacters = ctxChars, isFollowUp = false } = {}) {
   if (!String(question).trim()) throw new Error('Please enter a question');
   const index = scanProject(root);
   const terms = extractTerms(question);
@@ -518,6 +525,6 @@ function buildContext(root, question, { activePath = '', maxFiles = CONTEXT_DEFA
 }
 module.exports = {
   scanProject, readProjectFile, writeProjectFile, removeProjectFile, searchProject, grepProject, buildContext, buildCondensedTree,
-  resolveInside, resolveWriteTarget, isPrivate, clearScanCache, searchCode, ensureBm25, extractTerms, parseGitignore, gitignored,
+  resolveInside, resolveWriteTarget, isPrivate, clearScanCache, configureContext, searchCode, ensureBm25, extractTerms, parseGitignore, gitignored,
   limits: { MAX_INDEX, MAX_TEXT_BYTES, CONTEXT_DEFAULT_FILES, CONTEXT_DEFAULT_CHARS }
 };

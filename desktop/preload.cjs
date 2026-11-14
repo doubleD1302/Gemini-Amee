@@ -55,6 +55,14 @@ contextBridge.exposeInMainWorld('studio', {
     ipcRenderer.on('studio:connection',listener);
     return () => ipcRenderer.removeListener('studio:connection',listener);
   },
+  settings: {
+    get: () => invoke('settings:get'),
+    set: patch => invoke('settings:set', patch),
+    reset: () => invoke('settings:reset'),
+    pickDir: () => invoke('settings:pick-dir'),
+    checkUpdate: () => invoke('app:check-update'),
+    openRelease: url => invoke('app:open-release', url)
+  },
   preview: {
     status: () => invoke('preview:status'),
     open: url => invoke('preview:open', url),

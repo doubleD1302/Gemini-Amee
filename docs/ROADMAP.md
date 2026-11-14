@@ -22,7 +22,7 @@ Mỗi mục có tiêu chí nghiệm thu; thêm test cho mỗi mục.
 4. **[XONG] Git tích hợp**: xem status/diff, tạo commit theo đề xuất (commit luôn cần duyệt; không push tự động).
 5. **[XONG] Chỉ mục tìm kiếm ngữ nghĩa nhẹ** (BM25/ký hiệu đoạn mã) để chọn ngữ cảnh tốt hơn mà không cần embedding ngoài.
 6. **[XONG] Terminal tương tác có duyệt** (tiến trình chạy lâu, xem log trực tiếp, dừng được).
-7. Đóng gói/ký ứng dụng, tự cập nhật, trang cài đặt (cổng, giới hạn file/ký tự, thư mục checkpoint).
+7. **[XONG phần cài đặt/đóng gói/kiểm tra cập nhật; KÝ MÃ và TỰ CẬP NHẬT cần chứng chỉ/hạ tầng, xem docs/PACKAGING.md]** Đóng gói/ký ứng dụng, tự cập nhật, trang cài đặt (cổng, giới hạn file/ký tự, thư mục checkpoint).
 
 ## Không làm
 - Không gọi Gemini API/lấy cookie Google, không nới các bất biến an toàn trong CLAUDE.md.

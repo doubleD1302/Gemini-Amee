@@ -95,6 +95,20 @@ export interface AgentApi {
   undo(id: string, force?: boolean): Promise<CheckpointInfo>;
   onState(fn: (state: AgentState) => void): () => void;
 }
+export interface AppSettings { maxTurns: number; contextBudgetChars: number; contextFiles: number; contextChars: number; bridgePort: number; checkpointDir: string; }
+export interface SettingsPayload {
+  settings: AppSettings; defaults: AppSettings; ranges: Record<string, [number, number]>; labels: Record<string, string>; restartKeys: string[];
+  version: string; checkpointDirInUse: string; restartRequired?: string[];
+}
+export interface UpdateResult { status: 'latest'|'update'|'unknown'; current: string; latest: string; url: string; message: string; }
+export interface SettingsApi {
+  get(): Promise<SettingsPayload>;
+  set(patch: Partial<AppSettings>): Promise<SettingsPayload>;
+  reset(): Promise<SettingsPayload>;
+  pickDir(): Promise<string>;
+  checkUpdate(): Promise<UpdateResult>;
+  openRelease(url: string): Promise<string>;
+}
 export interface PreviewStatus { open: boolean; url: string; }
 export interface PreviewApi {
   status(): Promise<PreviewStatus>;
@@ -156,6 +170,7 @@ export interface StudioApi {
   git: GitApi;
   terminal: TerminalApi;
   preview: PreviewApi;
+  settings: SettingsApi;
   onJob(fn:(job:Job)=>void):()=>void;
   onConnection(fn:(conn:BridgeConnection)=>void):()=>void;
   onFileWritten?(fn:(data:{path:string})=>void):()=>void;

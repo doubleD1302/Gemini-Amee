@@ -54,7 +54,7 @@ const jobUpdates = id => sent.filter(s => s.ch === 'studio:job' && s.payload.id 
 
 test('boots, registers every IPC channel, persists token/port for stable pairing', async () => {
   await boot();
-  for (const ch of ['studio:init', 'studio:choose-folder', 'studio:read-file', 'studio:write-file', 'studio:search', 'studio:prepare', 'studio:send', 'studio:import-reply', 'agent:state', 'agent:start', 'agent:reply', 'agent:retry', 'agent:rotate-next', 'agent:previous', 'agent:open-in-editor', 'agent:resume', 'agent:discard-previous', 'preview:status', 'preview:open', 'preview:close', 'preview:capture-attach', 'term:list', 'term:start', 'term:read', 'term:send', 'term:stop', 'term:stop-all', 'git:status', 'git:diff', 'git:commit', 'rules:get', 'rules:save', 'rules:save-skill', 'rules:delete-skill', 'rules:trust', 'rules:revoke', 'agent:sessions', 'agent:new-session', 'agent:close-session', 'agent:attach', 'agent:detach', 'agent:cancel', 'agent:approve', 'agent:set-policy', 'agent:job-prompt', 'agent:checkpoints', 'agent:undo']) assert(handlers.has(ch), ch);
+  for (const ch of ['studio:init', 'studio:choose-folder', 'studio:read-file', 'studio:write-file', 'studio:search', 'studio:prepare', 'studio:send', 'studio:import-reply', 'agent:state', 'agent:start', 'agent:reply', 'agent:retry', 'agent:rotate-next', 'agent:previous', 'agent:open-in-editor', 'agent:resume', 'agent:discard-previous', 'settings:get', 'settings:set', 'settings:reset', 'settings:pick-dir', 'app:check-update', 'app:open-release', 'preview:status', 'preview:open', 'preview:close', 'preview:capture-attach', 'term:list', 'term:start', 'term:read', 'term:send', 'term:stop', 'term:stop-all', 'git:status', 'git:diff', 'git:commit', 'rules:get', 'rules:save', 'rules:save-skill', 'rules:delete-skill', 'rules:trust', 'rules:revoke', 'agent:sessions', 'agent:new-session', 'agent:close-session', 'agent:attach', 'agent:detach', 'agent:cancel', 'agent:approve', 'agent:set-policy', 'agent:job-prompt', 'agent:checkpoints', 'agent:undo']) assert(handlers.has(ch), ch);
   assert.match(bridgeInfo.token, /^[0-9a-f]{64}$/);
   const saved = JSON.parse(fs.readFileSync(path.join(userData, 'bridge-state.json'), 'utf8'));
   assert.equal(saved.token, bridgeInfo.token);
@@ -288,4 +288,40 @@ test('web preview over IPC: invalid or non-local URLs are refused before any win
   await assert.rejects(async () => invoke('preview:capture-attach', 'main'), /Chưa mở trang xem trước/);
   assert.equal((await invoke('agent:state')).attachments.length, 0);
   assert.deepEqual(await invoke('preview:close'), { open: false, url: '' });
+});
+
+test('settings over IPC: validated, persisted outside the project, live limits applied, restart-only keys flagged; update check and release links are constrained', async () => {
+  const got = await invoke('settings:get');
+  assert.equal(got.settings.maxTurns, 25);
+  assert.equal(got.version, require('../package.json').version);
+  assert.equal(got.checkpointDirInUse, path.join(userData, 'checkpoints'));
+  const r = await invoke('settings:set', { maxTurns: 40, contextFiles: 8, bridgePort: 52000 });
+  assert.deepEqual(r.restartRequired, ['bridgePort']);
+  assert.equal((await invoke('agent:state')).maxTurns, 40, 'applied to the running agent immediately');
+  assert.equal(JSON.parse(fs.readFileSync(path.join(userData, 'settings.json'), 'utf8')).maxTurns, 40);
+  assert.deepEqual(fs.readdirSync(project).filter(n => /settings/i.test(n)), [], 'settings live outside the project');
+  await assert.rejects(async () => invoke('settings:set', { maxTurns: 0 }), /phải là số nguyên từ/);
+  await assert.rejects(async () => invoke('settings:set', { checkpointDir: path.join(project, 'cp') }), /NGOÀI thư mục dự án/);
+  await assert.rejects(async () => invoke('settings:set', { evil: 1 }), /Cài đặt không tồn tại/);
+  assert.equal((await invoke('settings:get')).settings.maxTurns, 40);
+  // phiên mới tạo cũng dùng giới hạn đã lưu
+  const sid = await invoke('agent:new-session');
+  assert.equal((await invoke('agent:state', sid)).maxTurns, 40);
+  await invoke('agent:close-session', sid);
+  // kiểm tra cập nhật: chỉ khi gọi, không gửi gì về người dùng
+  const realFetch = global.fetch;
+  let calls = 0;
+  global.fetch = async (url, opts) => { calls++; assert.match(String(url), /^https:\/\/api\.github\.com\/repos\/doubleD1302\/Gemini-Amee\/releases\/latest$/); return { ok: true, status: 200, json: async () => ({ tag_name: 'v99.0.0', html_url: 'https://evil.com/x' }) }; };
+  try {
+    const u = await invoke('app:check-update');
+    assert.equal(u.status, 'update');
+    assert.equal(u.url, 'https://github.com/doubleD1302/Gemini-Amee/releases', 'foreign link from the response is not offered');
+    assert.equal(calls, 1);
+  } finally { global.fetch = realFetch; }
+  global.__openedUrls = [];
+  assert.equal(await invoke('app:open-release', 'https://evil.com/phish'), 'https://github.com/doubleD1302/Gemini-Amee/releases');
+  assert.equal(await invoke('app:open-release', 'https://github.com/doubleD1302/Gemini-Amee/releases/tag/v1.0.0'), 'https://github.com/doubleD1302/Gemini-Amee/releases/tag/v1.0.0');
+  assert.deepEqual(global.__openedUrls, ['https://github.com/doubleD1302/Gemini-Amee/releases', 'https://github.com/doubleD1302/Gemini-Amee/releases/tag/v1.0.0']);
+  await invoke('settings:reset');
+  assert.equal((await invoke('agent:state')).maxTurns, 25);
 });

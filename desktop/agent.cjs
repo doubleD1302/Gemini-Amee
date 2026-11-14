@@ -276,6 +276,13 @@ class AgentRunner extends EventEmitter {
     return this.snapshot();
   }
 
+  /** Áp dụng ngay giới hạn từ Cài đặt (không ảnh hưởng lượt đang chạy). */
+  setLimits({ maxTurns, contextBudgetChars } = {}) {
+    if (Number.isInteger(maxTurns) && maxTurns >= 5 && maxTurns <= 100) this.maxTurns = maxTurns;
+    if (Number.isInteger(contextBudgetChars) && contextBudgetChars >= 20000) this.meter.budget = contextBudgetChars;
+    this.emitState();
+  }
+
   /* ---------- tệp đính kèm ---------- */
   /** Thêm tệp đính kèm cho tin nhắn kế tiếp. Ném lỗi (tiếng Việt) nếu không hợp lệ. */
   attach(name, base64) {

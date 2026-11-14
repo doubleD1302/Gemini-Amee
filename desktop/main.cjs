@@ -4,7 +4,10 @@ const fs = require('node:fs');
 const { app, BrowserWindow, dialog, ipcMain, shell, clipboard } = require('electron');
 const workspace = require('./workspace.cjs');
 const tools = require('./tools.cjs');
-const { Bridge, loadOrCreateState } = require('./bridge.cjs');
+const { Bridge, loadOrCreateState, saveState } = require('./bridge.cjs');
+const { SettingsStore, DEFAULTS: SETTING_DEFAULTS, RANGES: SETTING_RANGES, RESTART_KEYS, LABELS: SETTING_LABELS, validateCheckpointDir } = require('./settings.cjs');
+const { checkForUpdate, safeReleaseUrl, RELEASES_URL } = require('./update-check.cjs');
+const APP_VERSION = require('../package.json').version;
 const { CheckpointStore } = require('./checkpoints.cjs');
 const { AgentRunner } = require('./agent.cjs');
 const { SessionStore } = require('./sessions.cjs');
@@ -19,6 +22,8 @@ let sessionStore = null;
 const runners = new Map();    // id -> AgentRunner (tối đa 3 phiên song song: main, s2, s3)
 const EXTRA_SLOTS = ['s2', 's3'];
 let checkpoints = null;
+let settingsStore = null;
+let defaultCheckpointDir = '';
 let rulesStore = null;
 let terminal = null;
 let preview = null;
@@ -51,9 +56,18 @@ function R(sid) {
 function listSessions() {
   return [...runners.entries()].map(([id, r]) => ({ id, goal: r.run.goal, status: r.run.status, turn: r.run.turn, pending: r.pending.length }));
 }
+/** Cài đặt áp dụng ngay (không cần mở lại ứng dụng). */
+function applyLiveSettings(s) {
+  workspace.configureContext({ files: s.contextFiles, chars: s.contextChars });
+  for (const r of runners.values()) r.setLimits({ maxTurns: s.maxTurns, contextBudgetChars: s.contextBudgetChars });
+}
+function settingsPayload(extra = {}) {
+  return { settings: settingsStore.get(), defaults: SETTING_DEFAULTS, ranges: SETTING_RANGES, labels: SETTING_LABELS, restartKeys: RESTART_KEYS, version: APP_VERSION, checkpointDirInUse: checkpoints ? checkpoints.dir : '', ...extra };
+}
 function makeRunner(slot) {
   const sid = slot || 'main';
-  const r = new AgentRunner({ bridge, workspace, tools, checkpoints, getRoot: () => currentRoot, sessions: sessionStore, rules: rulesStore, terminal, preview, slot, isMulti: () => runners.size > 1 });
+  const cfg = settingsStore ? settingsStore.get() : SETTING_DEFAULTS;
+  const r = new AgentRunner({ maxTurns: cfg.maxTurns, contextBudgetChars: cfg.contextBudgetChars, bridge, workspace, tools, checkpoints, getRoot: () => currentRoot, sessions: sessionStore, rules: rulesStore, terminal, preview, slot, isMulti: () => runners.size > 1 });
   r.on('state', snapshot => { send('studio:agent', { ...snapshot, sessionId: sid }); if (runners.size > 1) send('studio:sessions', listSessions()); });
   r.on('file-written', data => { workspace.clearScanCache(); send('studio:file-written', data); });
   r.on('attention', () => { if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isFocused()) mainWindow.flashFrame(true); });
@@ -111,16 +125,24 @@ function notifyStatus() {
 app.whenReady().then(async () => {
   const userData = app.getPath('userData');
   // Token + cổng được lưu lại: không phải ghép nối lại extension mỗi lần mở app.
-  const state = loadOrCreateState(path.join(userData, 'bridge-state.json'));
+  settingsStore = new SettingsStore(path.join(userData, 'settings.json'));
+  const settings = settingsStore.get();
+  const stateFile = path.join(userData, 'bridge-state.json');
+  const state = loadOrCreateState(stateFile);
+  if (settings.bridgePort !== state.port) { state.port = settings.bridgePort; try { saveState(stateFile, state); } catch { /* vẫn chạy với cổng này */ } }
   bridge = new Bridge({ token: state.token, port: state.port });
   await bridge.start();
-  checkpoints = new CheckpointStore(path.join(userData, 'checkpoints'));
+  defaultCheckpointDir = path.join(userData, 'checkpoints');
+  let cpDir = defaultCheckpointDir;
+  if (settings.checkpointDir) { try { cpDir = validateCheckpointDir(settings.checkpointDir, null); } catch { cpDir = defaultCheckpointDir; } }
+  checkpoints = new CheckpointStore(cpDir);
   rulesStore = new RulesStore(path.join(userData, 'rules'));
   preview = new WebPreview({ createWindow: opts => new BrowserWindow(opts), onChange: st => send('studio:preview', st) });
   terminal = new TerminalManager();
   terminal.on('update', list => send('studio:terminal', list));
   sessionStore = new SessionStore(path.join(userData, 'sessions'));
   runner = makeRunner('');
+  workspace.configureContext({ files: settings.contextFiles, chars: settings.contextChars });
   bridge.on('job', job => {
     if (job.kind === 'chat') {
       const m = job.conversationUrl && CONV_RE.exec(job.conversationUrl);
@@ -153,6 +175,8 @@ app.whenReady().then(async () => {
     dropExtraSessions();   // phiên song song thuộc project cũ
     if (terminal) terminal.stopAll();   // tiến trình nền thuộc project cũ không được mồ côi
     if (preview) preview.close();
+    // Bất biến: checkpoint nằm NGOÀI project. Nếu thư mục checkpoint tuỳ chọn trùng/nằm trong project mới → quay về mặc định.
+    try { if (checkpoints && checkpoints.dir !== defaultCheckpointDir) validateCheckpointDir(checkpoints.dir, result.filePaths[0]); } catch { checkpoints.dir = defaultCheckpointDir; }
     currentRoot = result.filePaths[0];
     workspace.clearScanCache();
     return currentIndex();
@@ -222,6 +246,24 @@ app.whenReady().then(async () => {
   ipcMain.handle('rules:delete-skill', (_event, name) => rulesStore.deleteSkill(requireWorkspace(), String(name || '')));
   ipcMain.handle('rules:trust', (_event, hash) => rulesStore.trust(requireWorkspace(), String(hash || '')));
   ipcMain.handle('rules:revoke', () => rulesStore.revoke(requireWorkspace()));
+  // ----- Cài đặt + kiểm tra cập nhật (chỉ khi người dùng bấm; không tự tải/cài) -----
+  ipcMain.handle('settings:get', () => settingsPayload());
+  ipcMain.handle('settings:set', (_event, patch) => {
+    const r = settingsStore.set(patch, { projectRoot: currentRoot });
+    applyLiveSettings(r.settings);
+    return settingsPayload({ restartRequired: r.restartRequired });
+  });
+  ipcMain.handle('settings:reset', () => { settingsStore.reset(); applyLiveSettings(settingsStore.get()); return settingsPayload({ restartRequired: RESTART_KEYS }); });
+  ipcMain.handle('settings:pick-dir', async () => {
+    const result = await dialog.showOpenDialog(mainWindow, { properties: ['openDirectory', 'createDirectory'], title: 'Chọn thư mục lưu checkpoint (ngoài dự án)' });
+    return result.canceled || !result.filePaths[0] ? '' : result.filePaths[0];
+  });
+  ipcMain.handle('app:check-update', () => checkForUpdate(APP_VERSION));
+  ipcMain.handle('app:open-release', (_event, url) => {
+    const safe = safeReleaseUrl(url) || RELEASES_URL;
+    shell.openExternal(safe);
+    return safe;
+  });
   // ----- Xem trước web (chỉ localhost). Mở/chụp do người dùng bấm; agent phải qua thẻ duyệt (preview_open/preview_screenshot) -----
   ipcMain.handle('preview:status', () => preview.status());
   ipcMain.handle('preview:open', (_event, url) => preview.open(String(url || '')));
