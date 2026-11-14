@@ -91,6 +91,7 @@ class Bridge extends EventEmitter {
       id: String(this.nextId++), question, prompt, included: included || [], status: 'queued', answer: '', updatedAt: Date.now(),
       kind: opts.kind || 'chat', newChat: !!opts.newChat, expectConversation: opts.expectConversation || null,
       conversationUrl: opts.expectConversation || null, attempts: 0, dispatchedAt: 0, code: '',
+      session: typeof opts.session === 'string' ? opts.session.slice(0, 16) : '', navigate: !!opts.navigate, navigations: 0,
       attachments: Array.isArray(opts.attachments) ? opts.attachments.slice(0, 3) : []   // ảnh {name,mime,data(base64)} đã được attachments.cjs kiểm tra
     };
     this.jobs.push(job);
@@ -179,7 +180,7 @@ class Bridge extends EventEmitter {
         job.attempts++;
         job.dispatchedAt = Date.now();
         this.setJob(job, { status: 'dispatched' });
-        return this.json(res, 200, { job: { id: job.id, prompt: job.prompt, newChat: job.newChat, expectConversation: job.expectConversation, attachments: job.attachments } });
+        return this.json(res, 200, { job: { id: job.id, prompt: job.prompt, newChat: job.newChat, expectConversation: job.expectConversation, attachments: job.attachments, sessionId: job.session, navigate: job.navigate } });
       }
       if (req.method === 'POST' && route === '/v1/result') {
         const body = await this.body(req);
@@ -187,6 +188,11 @@ class Bridge extends EventEmitter {
         if (!job) return this.json(res, 404, { error: 'Job not found' });
         if (!['sent', 'streaming', 'final', 'error'].includes(body.status)) return this.json(res, 400, { error: 'Bad status' });
         if (typeof body.text !== 'string') return this.json(res, 400, { error: 'Text must be a string' });
+        // Extension phải chuyển sang đúng cuộc trò chuyện của phiên này (nhiều phiên song song): xếp hàng lại, tối đa 3 lần.
+        if (body.status === 'error' && body.code === 'navigating' && job.status !== 'cancelled' && job.navigations < 3) {
+          this.setJob(job, { status: 'queued', navigations: job.navigations + 1, attempts: 0, code: '' });
+          return this.json(res, 200, { ok: true, requeued: true });
+        }
         // Job đã huỷ: báo cho extension dừng chờ.
         if (job.status === 'cancelled') return this.json(res, 200, { ok: true, cancelled: true });
         // Cập nhật muộn/trùng không được ghi đè câu trả lời đã hoàn tất.

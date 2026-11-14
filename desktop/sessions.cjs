@@ -80,13 +80,16 @@ function sanitizeSession(raw) {
 
 class SessionStore {
   constructor(dir) { this.dir = dir; }
-  _file(root) {
+  /** slot '' = phiên chính (đường dẫn cũ, tương thích ngược); slot khác = phiên song song (Giai đoạn 3, mục 1). */
+  _file(root, slot = '') {
     const key = crypto.createHash('sha1').update(String(root)).digest('hex').slice(0, 16);
-    return path.join(this.dir, key, 'session.json');
+    if (!slot) return path.join(this.dir, key, 'session.json');
+    if (!/^[a-z0-9]{1,8}$/.test(String(slot))) throw new Error('Slot phiên không hợp lệ.');
+    return path.join(this.dir, key, 'slots', String(slot), 'session.json');
   }
   /** Ghi nguyên tử (tmp + rename). */
-  save(root, data) {
-    const file = this._file(root);
+  save(root, data, slot = '') {
+    const file = this._file(root, slot);
     fs.mkdirSync(path.dirname(file), { recursive: true });
     const json = JSON.stringify({ ...data, version: VERSION, root: String(root) });
     if (Buffer.byteLength(json) > MAX_FILE_BYTES) throw new Error('Phiên quá lớn để lưu.');
@@ -94,16 +97,20 @@ class SessionStore {
     fs.writeFileSync(tmp, json, 'utf8');
     fs.renameSync(tmp, file);
   }
-  load(root) {
+  load(root, slot = '') {
     try {
-      const file = this._file(root);
+      const file = this._file(root, slot);
       if (fs.statSync(file).size > MAX_FILE_BYTES) return null;
       const s = sanitizeSession(JSON.parse(fs.readFileSync(file, 'utf8')));
       return s && (!s.root || s.root === String(root)) ? s : null;
     } catch { return null; }
   }
-  clear(root) {
-    try { fs.rmSync(path.dirname(this._file(root)), { recursive: true, force: true }); } catch { /* ignore */ }
+  clear(root, slot = '') {
+    try {
+      const file = this._file(root, slot);
+      if (slot) fs.rmSync(path.dirname(file), { recursive: true, force: true });
+      else fs.rmSync(file, { force: true });   // chỉ phiên chính; các slot khác giữ nguyên
+    } catch { /* ignore */ }
   }
 }
 

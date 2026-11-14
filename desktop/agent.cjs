@@ -37,6 +37,8 @@ class AgentRunner extends EventEmitter {
     this.getRoot = deps.getRoot;
     this.maxTurns = deps.maxTurns || 25;
     this.detectChecks = deps.detectChecks || null; // tuỳ chọn, để test ghi đè
+    this.slot = deps.slot || '';                   // '' = phiên chính; 's2','s3'... = phiên song song (lưu bền riêng)
+    this.isMulti = deps.isMulti || (() => false);  // true khi có >1 phiên: extension được phép tự chuyển sang đúng cuộc trò chuyện
     this.terminal = deps.terminal || null;         // TerminalManager (tuỳ chọn): tiến trình nền; start/send luôn cần duyệt
     this.rules = deps.rules || null;               // RulesStore (tuỳ chọn): quy tắc/kỹ năng .gps đã được người dùng duyệt
     this.sessions = deps.sessions || null;         // SessionStore (tuỳ chọn): lưu bền phiên theo project, NGOÀI project
@@ -139,7 +141,8 @@ class AgentRunner extends EventEmitter {
     this._lastPrompt = { prompt, newChat, attachments };
     this.run.liveText = '';
     const job = this.bridge.enqueue(this.run.goal.slice(0, 120), prompt, [], {
-      kind: 'agent', newChat, expectConversation: newChat ? null : this.run.conversationUrl, attachments
+      kind: 'agent', newChat, expectConversation: newChat ? null : this.run.conversationUrl, attachments,
+      session: this.slot || 'main', navigate: !!this.isMulti()
     });
     this.run.jobId = job.id;
     if (newChat) this.meter.startChat(prompt.length); else this.meter.addSent(prompt.length);
@@ -199,14 +202,14 @@ class AgentRunner extends EventEmitter {
     clearTimeout(this._persistTimer);
     this._persistTimer = null;
     if (!this.sessions || !this.run.id || !this._runRoot || this.run.status === 'idle') return false;
-    try { this.sessions.save(this._runRoot, this._exportSession()); return true; } catch { return false; }
+    try { this.sessions.save(this._runRoot, this._exportSession(), this.slot); return true; } catch { return false; }
   }
   /** Tóm tắt phiên đã lưu của project hiện tại (null nếu không có hoặc phiên đó đang hoạt động trong bộ nhớ). */
   previousSession() {
     const root = this.getRoot();
     if (!root || !this.sessions) return null;
     if (this.run.id && this._runRoot === root) return null;
-    const s = this.sessions.load(root);
+    const s = this.sessions.load(root, this.slot);
     if (!s) return null;
     return {
       id: s.run.id, goal: s.run.goal, savedAt: s.savedAt, status: s.run.status, turn: s.run.turn, stepCount: s.steps.length,
@@ -218,7 +221,7 @@ class AgentRunner extends EventEmitter {
   }
   discardPrevious() {
     const root = this.getRoot();
-    if (root && this.sessions && !(this.run.id && this._runRoot === root)) this.sessions.clear(root);
+    if (root && this.sessions && !(this.run.id && this._runRoot === root)) this.sessions.clear(root, this.slot);
     return true;
   }
   /**
@@ -231,7 +234,7 @@ class AgentRunner extends EventEmitter {
     if (!this.sessions) throw new Error('Chưa bật lưu phiên.');
     const root = this.getRoot();
     if (!root) throw new Error('Hãy mở thư mục dự án trước.');
-    const saved = this.sessions.load(root);
+    const saved = this.sessions.load(root, this.slot);
     if (!saved) throw new Error('Không có phiên trước để khôi phục cho project này.');
     const { systemPrompt, rulesInfo } = this._makeSystemPrompt(root);
 

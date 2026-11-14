@@ -13,7 +13,10 @@ const { RulesStore } = require('./project-rules.cjs');
 const git = require('./git.cjs');
 const { TerminalManager } = require('./terminal.cjs');
 let bridge = null;
-let runner = null;
+let runner = null;            // phiên chính ('main')
+let sessionStore = null;
+const runners = new Map();    // id -> AgentRunner (tối đa 3 phiên song song: main, s2, s3)
+const EXTRA_SLOTS = ['s2', 's3'];
 let checkpoints = null;
 let rulesStore = null;
 let terminal = null;
@@ -37,6 +40,35 @@ function currentIndex() {
 function requireWorkspace() {
   if (!currentRoot) throw new Error('Open a project folder first');
   return currentRoot;
+}
+function R(sid) {
+  const r = runners.get(sid == null || sid === '' ? 'main' : String(sid));
+  if (!r) throw new Error('Phiên không tồn tại (có thể đã bị đóng).');
+  return r;
+}
+function listSessions() {
+  return [...runners.entries()].map(([id, r]) => ({ id, goal: r.run.goal, status: r.run.status, turn: r.run.turn, pending: r.pending.length }));
+}
+function makeRunner(slot) {
+  const sid = slot || 'main';
+  const r = new AgentRunner({ bridge, workspace, tools, checkpoints, getRoot: () => currentRoot, sessions: sessionStore, rules: rulesStore, terminal, slot, isMulti: () => runners.size > 1 });
+  r.on('state', snapshot => { send('studio:agent', { ...snapshot, sessionId: sid }); if (runners.size > 1) send('studio:sessions', listSessions()); });
+  r.on('file-written', data => { workspace.clearScanCache(); send('studio:file-written', data); });
+  r.on('attention', () => { if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isFocused()) mainWindow.flashFrame(true); });
+  runners.set(sid, r);
+  return r;
+}
+function closeSession(id) {
+  const r = runners.get(id);
+  if (!r) return;
+  try { r.cancel(); } catch { /* ignore */ }
+  r.dispose();
+  runners.delete(id);
+  if (currentRoot && sessionStore) sessionStore.clear(currentRoot, id);
+}
+function dropExtraSessions() {
+  for (const id of [...runners.keys()]) if (id !== 'main') { const r = runners.get(id); try { r.dispose(); } catch { /* ignore */ } runners.delete(id); }
+  send('studio:sessions', listSessions());
 }
 function createWindow() {
   const iconPath = path.join(__dirname, '../public/icon128.png');
@@ -84,7 +116,8 @@ app.whenReady().then(async () => {
   rulesStore = new RulesStore(path.join(userData, 'rules'));
   terminal = new TerminalManager();
   terminal.on('update', list => send('studio:terminal', list));
-  runner = new AgentRunner({ bridge, workspace, tools, checkpoints, getRoot: () => currentRoot, sessions: new SessionStore(path.join(userData, 'sessions')), rules: rulesStore, terminal });
+  sessionStore = new SessionStore(path.join(userData, 'sessions'));
+  runner = makeRunner('');
   bridge.on('job', job => {
     if (job.kind === 'chat') {
       const m = job.conversationUrl && CONV_RE.exec(job.conversationUrl);
@@ -106,9 +139,6 @@ app.whenReady().then(async () => {
     notifyJob(job);
   });
   bridge.on('heartbeat', notifyStatus);
-  runner.on('state', snapshot => send('studio:agent', snapshot));
-  runner.on('file-written', data => { workspace.clearScanCache(); send('studio:file-written', data); });
-  runner.on('attention', () => { if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isFocused()) mainWindow.flashFrame(true); });
   // Trình duyệt chỉ được ĐỀ XUẤT ghi file; người dùng duyệt (kèm diff) trong Studio.
   bridge.onProposeWrite = (relPath, content) => runner.proposeExternalWrite(relPath, content);
   bridge.onGetWorkspace = async () => currentIndex();
@@ -116,7 +146,8 @@ app.whenReady().then(async () => {
   ipcMain.handle('studio:choose-folder', async () => {
     const result = await dialog.showOpenDialog(mainWindow, { properties: ['openDirectory'], title:'Select project folder' });
     if (result.canceled || !result.filePaths[0]) return null;
-    if (runner) runner.cancel();
+    for (const r of runners.values()) r.cancel();
+    dropExtraSessions();   // phiên song song thuộc project cũ
     if (terminal) terminal.stopAll();   // tiến trình nền thuộc project cũ không được mồ côi
     currentRoot = result.filePaths[0];
     workspace.clearScanCache();
@@ -212,28 +243,45 @@ app.whenReady().then(async () => {
     return git.commit(root, { message: r.message, paths: r.paths.map(String), hooks });
   });
   // ----- Agent -----
-  ipcMain.handle('agent:state', () => runner.snapshot());
-  ipcMain.handle('agent:start', (_event, goal) => runner.start(goal));
-  ipcMain.handle('agent:reply', (_event, text) => runner.reply(text));
-  ipcMain.handle('agent:retry', () => runner.retry());
-  ipcMain.handle('agent:rotate-next', () => runner.rotateNext());
-  ipcMain.handle('agent:previous', () => runner.previousSession());
+  ipcMain.handle('agent:state', (_event, sid) => R(sid).snapshot());
+  ipcMain.handle('agent:start', (_event, goal, sid) => R(sid).start(goal));
+  ipcMain.handle('agent:reply', (_event, text, sid) => R(sid).reply(text));
+  ipcMain.handle('agent:retry', (_event, sid) => R(sid).retry());
+  ipcMain.handle('agent:rotate-next', (_event, sid) => R(sid).rotateNext());
+  ipcMain.handle('agent:previous', (_event, sid) => R(sid).previousSession());
   ipcMain.handle('agent:open-in-editor', (_event, rel, line, editor) => {
     if (!currentRoot) throw new Error('Hãy mở thư mục dự án trước.');
     return openInEditor(shell, { root: currentRoot, rel: String(rel || ''), line, editor: String(editor || 'vscode') });
   });
-  ipcMain.handle('agent:resume', (_event, opts) => runner.resume({ continueRun: !(opts && opts.continueRun === false) }));
-  ipcMain.handle('agent:discard-previous', () => runner.discardPrevious());
-  ipcMain.handle('agent:attach', (_event, name, base64) => runner.attach(String(name || ''), String(base64 || '')));
-  ipcMain.handle('agent:detach', (_event, id) => runner.detach(String(id)));
-  ipcMain.handle('agent:cancel', () => runner.cancel());
-  ipcMain.handle('agent:approve', (_event, id, decision, reason) => runner.approve(String(id), String(decision), String(reason || '')));
-  ipcMain.handle('agent:set-policy', (_event, policy) => runner.setPolicy(policy));
-  ipcMain.handle('agent:job-prompt', (_event, id) => runner.getJobPrompt(id));
+  ipcMain.handle('agent:resume', (_event, opts, sid) => R(sid).resume({ continueRun: !(opts && opts.continueRun === false) }));
+  ipcMain.handle('agent:discard-previous', (_event, sid) => R(sid).discardPrevious());
+  ipcMain.handle('agent:attach', (_event, name, base64, sid) => R(sid).attach(String(name || ''), String(base64 || '')));
+  ipcMain.handle('agent:detach', (_event, id, sid) => R(sid).detach(String(id)));
+  ipcMain.handle('agent:cancel', (_event, sid) => R(sid).cancel());
+  ipcMain.handle('agent:approve', (_event, id, decision, reason, sid) => R(sid).approve(String(id), String(decision), String(reason || '')));
+  ipcMain.handle('agent:set-policy', (_event, policy, sid) => R(sid).setPolicy(policy));
+  ipcMain.handle('agent:job-prompt', (_event, id) => runner.getJobPrompt(id));   // job id là toàn cục (chung một bridge)
   ipcMain.handle('agent:checkpoints', () => runner.listCheckpoints());
-  ipcMain.handle('agent:undo', (_event, id, force) => runner.undo(String(id), !!force));
+  ipcMain.handle('agent:undo', (_event, id, force, sid) => R(sid).undo(String(id), !!force));
+  // ----- Nhiều phiên song song: mỗi phiên một AgentRunner + một cuộc trò chuyện Gemini; chung bridge (hàng đợi gắn sessionId) -----
+  ipcMain.handle('agent:sessions', () => listSessions());
+  ipcMain.handle('agent:new-session', () => {
+    requireWorkspace();
+    const slot = EXTRA_SLOTS.find(x => !runners.has(x));
+    if (!slot) throw new Error('Tối đa 3 phiên song song. Hãy đóng bớt một phiên.');
+    runners.set(slot, makeRunner(slot));
+    send('studio:sessions', listSessions());
+    return slot;
+  });
+  ipcMain.handle('agent:close-session', (_event, sid) => {
+    const id = String(sid || '');
+    if (id === 'main' || !runners.has(id)) throw new Error('Không đóng được phiên này.');
+    closeSession(id);
+    send('studio:sessions', listSessions());
+    return listSessions();
+  });
   createWindow();
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length===0) createWindow(); });
 });
 app.on('window-all-closed', () => { if(process.platform!=='darwin') app.quit(); });
-app.on('before-quit', () => { if (terminal) terminal.dispose(); if (runner) runner.dispose(); if (bridge) bridge.stop().catch(()=>{}); });
+app.on('before-quit', () => { if (terminal) terminal.dispose(); for (const r of runners.values()) r.dispose(); if (bridge) bridge.stop().catch(()=>{}); });

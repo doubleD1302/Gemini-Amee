@@ -12,7 +12,7 @@ import type { BridgeConnection, ChatMessage, ChatSession, Job, Prepared, Project
 import { MarkdownRenderer } from './components/MarkdownRenderer';
 import { OnboardingModal, type ModelOption, type ModeOption, type TabType } from './components/OnboardingModal';
 import { ChatHistoryDrawer } from './components/ChatHistoryDrawer';
-import { AgentPanel } from './components/AgentPanel';
+import { AgentSessions } from './components/AgentSessions';
 import {
   loadChatSessions,
   saveChatSessions,
@@ -1566,7 +1566,7 @@ Bạn là một AI Vibe Coding siêu hạng. Nhiệm vụ của bạn là trực
               </div>
             </div>
           ) : inspectorTab === 'agent' ? (
-            <AgentPanel connected={connected} workspaceOpen={!!workspace} onToast={inform} onFilesChanged={refreshWorkspace} />
+            <AgentSessions connected={connected} workspaceOpen={!!workspace} onToast={inform} onFilesChanged={refreshWorkspace} />
           ) : (
             <div className="bridge-pane">
               <div className="bridge-orb"><PlugZap size={26} /></div>

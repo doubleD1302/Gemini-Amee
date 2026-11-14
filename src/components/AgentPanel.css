@@ -176,3 +176,17 @@
 .agent-term-proc.sel { border-color: rgba(129,140,248,.45); background: rgba(99,102,241,.08); }
 .agent-term-name { margin-left: 0; flex: 1; min-width: 0; text-align: left; text-decoration: none; color: var(--text-main, #f1f5f9); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .agent-term-log { max-height: 240px; min-height: 80px; }
+
+/* Nhiều phiên song song (Giai đoạn 3, mục 1) */
+.agent-sessions { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+.agent-sessions > .agent-pane { flex: 1; min-height: 0; }
+.agent-session-tabs { display: flex; align-items: stretch; gap: 4px; padding: 6px 8px 0; overflow-x: auto; border-bottom: 1px solid var(--border-subtle, rgba(255,255,255,.07)); }
+.agent-session-tab { display: inline-flex; align-items: center; border: 1px solid var(--border, rgba(148,163,184,.25)); border-bottom: 0; border-radius: 8px 8px 0 0; background: transparent; }
+.agent-session-tab.on { background: rgba(99,102,241,.16); border-color: rgba(129,140,248,.6); }
+.agent-session-tab > button { background: none; border: 0; color: var(--text-muted, #94a3b8); font: inherit; font-size: 11.5px; padding: 5px 8px; cursor: pointer; display: flex; flex-direction: column; align-items: flex-start; text-align: left; }
+.agent-session-tab.on > button { color: var(--text-main, #f1f5f9); }
+.agent-session-status { font-size: 10px; color: var(--text-dim, #64748b); }
+.agent-session-tab.waiting_approval .agent-session-status { color: var(--accent-amber, #f59e0b); font-weight: 700; }
+.agent-session-tab.running .agent-session-status { color: var(--accent-cyan, #38bdf8); }
+.agent-session-close { padding: 4px !important; align-self: center; }
+.agent-session-add { background: none; border: 1px dashed var(--border, rgba(148,163,184,.35)); border-radius: 8px 8px 0 0; color: var(--text-muted, #94a3b8); font: inherit; font-size: 11.5px; padding: 5px 9px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }

@@ -323,6 +323,15 @@
         const ok = await ensureNewChat();
         if (!ok) setBadge('Không tự mở được chat mới · vẫn gửi trong chat hiện tại', 'error');
       } else if (job.expectConversation && !sameConversation(job.expectConversation)) {
+        // Nhiều phiên song song (job.navigate): tự chuyển tab sang cuộc trò chuyện của phiên này. Báo 'navigating' để Studio
+        // xếp job vào hàng đợi lại ngay; trang tải lại, content script mới sẽ nhận lại job. CHƯA kiểm chứng trên Gemini thật.
+        if (job.navigate && /^https:\/\/gemini\.google\.com\//.test(job.expectConversation)) {
+          setBadge('Đang chuyển sang cuộc trò chuyện của phiên này…', 'working');
+          await report('error', 'Đang chuyển tab Gemini sang cuộc trò chuyện của phiên này.', { code: 'navigating' });
+          active = null;
+          location.href = job.expectConversation;
+          return;
+        }
         setBadge('Tab Gemini đang ở cuộc trò chuyện khác', 'error');
         await report('error', 'Tab Gemini đang ở cuộc trò chuyện khác với phiên làm việc này.', { code: 'conversation_mismatch' });
         active = null;

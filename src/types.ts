@@ -57,7 +57,15 @@ export interface AgentPlanItem { text: string; status: AgentPlanStatus; }
 export interface AgentPlan { items: AgentPlanItem[]; updatedAt: number; }
 /** Tệp đính kèm chờ gửi ở tin nhắn kế tiếp (chỉ thông tin, không có dữ liệu). */
 export interface AgentAttachment { id: string; name: string; kind: 'image'|'text'; size: number; }
+export interface SessionInfo { id: string; goal: string; status: AgentStatus; turn: number; pending: number; }
+export interface SessionsApi {
+  list(): Promise<SessionInfo[]>;
+  create(): Promise<string>;
+  close(id: string): Promise<SessionInfo[]>;
+  onChange(fn: (list: SessionInfo[]) => void): () => void;
+}
 export interface AgentState {
+  sessionId?: string;
   id: string|null; goal: string; status: AgentStatus; turn: number; maxTurns: number;
   conversationUrl: string|null; jobId: string|null; liveText: string; error: string; question: string;
   plan: AgentPlan|null;
@@ -134,6 +142,8 @@ export interface StudioApi {
   showExtension():Promise<string>;
   importReply(id:string,text:string):Promise<boolean>;
   agent: AgentApi;
+  agentFor(sessionId: string): AgentApi;
+  sessions: SessionsApi;
   rules: RulesApi;
   git: GitApi;
   terminal: TerminalApi;

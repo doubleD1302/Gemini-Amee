@@ -2,6 +2,34 @@
 const { contextBridge, ipcRenderer } = require('electron');
 const invoke = (channel,...args) => ipcRenderer.invoke(channel,...args);
 
+/** API Agent gắn với một phiên (sessionId được gắn vào cuối mỗi lời gọi IPC; main xử lý mặc định là 'main'). */
+function agentApi(sid) {
+  return {
+    state: () => invoke('agent:state', sid),
+    start: goal => invoke('agent:start', goal, sid),
+    reply: text => invoke('agent:reply', text, sid),
+    retry: () => invoke('agent:retry', sid),
+    rotateNext: () => invoke('agent:rotate-next', sid),
+    previous: () => invoke('agent:previous', sid),
+    openInEditor: (rel, line, editor) => invoke('agent:open-in-editor', rel, line, editor),
+    resume: opts => invoke('agent:resume', opts, sid),
+    discardPrevious: () => invoke('agent:discard-previous', sid),
+    attach: (name, base64) => invoke('agent:attach', name, base64, sid),
+    detach: id => invoke('agent:detach', id, sid),
+    cancel: () => invoke('agent:cancel', sid),
+    approve: (id, decision, reason) => invoke('agent:approve', id, decision, reason, sid),
+    setPolicy: policy => invoke('agent:set-policy', policy, sid),
+    jobPrompt: id => invoke('agent:job-prompt', id),
+    checkpoints: () => invoke('agent:checkpoints'),
+    undo: (id, force) => invoke('agent:undo', id, force, sid),
+    onState: callback => {
+      const listener = (_event, snapshot) => { if ((snapshot && snapshot.sessionId) === sid) callback(snapshot); };
+      ipcRenderer.on('studio:agent', listener);
+      return () => ipcRenderer.removeListener('studio:agent', listener);
+    }
+  };
+}
+
 contextBridge.exposeInMainWorld('studio', {
   init: () => invoke('studio:init'),
   chooseFolder: () => invoke('studio:choose-folder'),
@@ -53,28 +81,17 @@ contextBridge.exposeInMainWorld('studio', {
     trust: hash => invoke('rules:trust', hash),
     revoke: () => invoke('rules:revoke')
   },
-  agent: {
-    state: () => invoke('agent:state'),
-    start: goal => invoke('agent:start', goal),
-    reply: text => invoke('agent:reply', text),
-    retry: () => invoke('agent:retry'),
-    rotateNext: () => invoke('agent:rotate-next'),
-    previous: () => invoke('agent:previous'),
-    openInEditor: (rel, line, editor) => invoke('agent:open-in-editor', rel, line, editor),
-    resume: opts => invoke('agent:resume', opts),
-    discardPrevious: () => invoke('agent:discard-previous'),
-    attach: (name, base64) => invoke('agent:attach', name, base64),
-    detach: id => invoke('agent:detach', id),
-    cancel: () => invoke('agent:cancel'),
-    approve: (id, decision, reason) => invoke('agent:approve', id, decision, reason),
-    setPolicy: policy => invoke('agent:set-policy', policy),
-    jobPrompt: id => invoke('agent:job-prompt', id),
-    checkpoints: () => invoke('agent:checkpoints'),
-    undo: (id, force) => invoke('agent:undo', id, force),
-    onState: callback => {
-      const listener = (_event, snapshot) => callback(snapshot);
-      ipcRenderer.on('studio:agent', listener);
-      return () => ipcRenderer.removeListener('studio:agent', listener);
+  agent: agentApi('main'),
+  // Mỗi phiên song song có API riêng gắn với sessionId (tối đa 3: main, s2, s3).
+  agentFor: sid => agentApi(String(sid || 'main')),
+  sessions: {
+    list: () => invoke('agent:sessions'),
+    create: () => invoke('agent:new-session'),
+    close: sid => invoke('agent:close-session', sid),
+    onChange: callback => {
+      const listener = (_event, list) => callback(list);
+      ipcRenderer.on('studio:sessions', listener);
+      return () => ipcRenderer.removeListener('studio:sessions', listener);
     }
   },
   onFileWritten: callback => {

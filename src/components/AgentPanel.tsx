@@ -278,12 +278,15 @@ function StepRow({ step }: { step: AgentStep }) {
   );
 }
 
-export function AgentPanel({ connected, workspaceOpen, onToast, onFilesChanged }: {
+export function AgentPanel({ sessionId = 'main', connected, workspaceOpen, onToast, onFilesChanged }: {
+  sessionId?: string;
   connected: boolean;
   workspaceOpen: boolean;
   onToast: (message: string) => void;
   onFilesChanged?: () => void;
 }) {
+  // Mỗi phiên song song có API riêng gắn với sessionId; panel được mount lại (key) khi đổi phiên.
+  const api = useMemo(() => window.studio.agentFor(sessionId), [sessionId]);
   const [state, setState] = useState<AgentState>(EMPTY);
   const [goal, setGoal] = useState('');
   const [reply, setReply] = useState('');
@@ -300,8 +303,8 @@ export function AgentPanel({ connected, workspaceOpen, onToast, onFilesChanged }
 
   useEffect(() => {
     let alive = true;
-    window.studio.agent.state().then(s => { if (alive) setState(s); }).catch(() => {});
-    const off = window.studio.agent.onState(s => { if (alive) setState(s); });
+    api.state().then(s => { if (alive) setState(s); }).catch(() => {});
+    const off = api.onState(s => { if (alive) setState(s); });
     return () => { alive = false; off(); };
   }, []);
 
@@ -309,20 +312,20 @@ export function AgentPanel({ connected, workspaceOpen, onToast, onFilesChanged }
   useEffect(() => {
     let alive = true;
     if (!workspaceOpen || state.id) { setPrevious(null); return () => { alive = false; }; }
-    window.studio.agent.previous().then(p => { if (alive) setPrevious(p); }).catch(() => { if (alive) setPrevious(null); });
+    api.previous().then(p => { if (alive) setPrevious(p); }).catch(() => { if (alive) setPrevious(null); });
     return () => { alive = false; };
   }, [workspaceOpen, state.id]);
 
   const openInEditor = useCallback((rel: string, line?: number) => {
-    window.studio.agent.openInEditor(rel, line || 1, editor).then(r => {
+    api.openInEditor(rel, line || 1, editor).then(r => {
       if (r.opened === 'none') onToast(`Không mở được file${r.error ? ': ' + r.error : ''}.`);
       else if (r.fallback) onToast('Không mở được bằng editor đã chọn (chưa cài hoặc chưa đăng ký) → đã mở bằng ứng dụng mặc định, không tới đúng dòng.');
     }).catch(err => onToast(errText(err)));
-  }, [editor, onToast]);
+  }, [api, editor, onToast]);
   const prefs = useMemo<DiffPrefs>(() => ({ mode: diffMode, editor, open: openInEditor }), [diffMode, editor, openInEditor]);
 
   const refreshCheckpoints = useCallback(() => {
-    window.studio.agent.checkpoints().then(setCheckpoints).catch(() => {});
+    api.checkpoints().then(setCheckpoints).catch(() => {});
   }, []);
   // Tải lại danh sách checkpoint khi có bước mới (một file vừa được ghi).
   useEffect(() => {
@@ -340,24 +343,24 @@ export function AgentPanel({ connected, workspaceOpen, onToast, onFilesChanged }
     try { await fn(); } catch (err) { setError(errText(err)); } finally { setBusy(false); }
   }, []);
 
-  const start = () => run(async () => { await window.studio.agent.start(goal); setGoal(''); });
-  const send = () => run(async () => { await window.studio.agent.reply(reply); setReply(''); });
+  const start = () => run(async () => { await api.start(goal); setGoal(''); });
+  const send = () => run(async () => { await api.reply(reply); setReply(''); });
   const addFiles = (files: File[]) => run(async () => {
     for (const f of files) {
       if (f.size > ATTACH_MAX_BYTES) throw new Error(`${f.name}: tệp quá lớn (tối đa ${ATTACH_MAX_BYTES / 1024 / 1024} MB).`);
-      await window.studio.agent.attach(f.name || 'anh-dan.png', await fileToBase64(f));
+      await api.attach(f.name || 'anh-dan.png', await fileToBase64(f));
     }
   });
-  const removeAttachment = (id: string) => run(async () => { await window.studio.agent.detach(id); });
+  const removeAttachment = (id: string) => run(async () => { await api.detach(id); });
   const onPasteFiles = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
     const files = Array.from(e.clipboardData.files || []);
     if (files.length) { e.preventDefault(); void addFiles(files); }
   };
   const decide = (id: string, decision: 'approve' | 'reject' | 'approve_all_edits' | 'approve_group') =>
-    run(async () => { await window.studio.agent.approve(id, decision); if (decision !== 'reject') onFilesChanged?.(); });
+    run(async () => { await api.approve(id, decision); if (decision !== 'reject') onFilesChanged?.(); });
   const copyPrompt = () => run(async () => {
     if (!state.jobId) return;
-    const prompt = await window.studio.agent.jobPrompt(state.jobId);
+    const prompt = await api.jobPrompt(state.jobId);
     if (!prompt) throw new Error('Không còn prompt cho lượt này.');
     await window.studio.copy(prompt);
     onToast('Đã sao chép prompt. Dán vào gemini.google.com, rồi dán câu trả lời vào ô bên dưới.');
@@ -369,11 +372,11 @@ export function AgentPanel({ connected, workspaceOpen, onToast, onFilesChanged }
   });
   const undo = (cp: CheckpointInfo) => run(async () => {
     try {
-      await window.studio.agent.undo(cp.id);
+      await api.undo(cp.id);
     } catch (err) {
       if (/đã thay đổi sau checkpoint/.test(errText(err))) {
         if (window.confirm(`${cp.path} đã được sửa tiếp sau thay đổi này. Hoàn tác sẽ ghi đè các chỉnh sửa mới hơn. Tiếp tục?`)) {
-          await window.studio.agent.undo(cp.id, true);
+          await api.undo(cp.id, true);
         } else return;
       } else throw err;
     }
@@ -415,7 +418,7 @@ export function AgentPanel({ connected, workspaceOpen, onToast, onFilesChanged }
         <label className="agent-toggle" title="Khi bật, các lần sửa/tạo file tự áp dụng (vẫn hoàn tác được). Chạy lệnh terminal LUÔN cần bạn duyệt.">
           <input
             type="checkbox" checked={state.policy.autoEdits}
-            onChange={e => { void window.studio.agent.setPolicy({ autoEdits: e.target.checked }); }}
+            onChange={e => { void api.setPolicy({ autoEdits: e.target.checked }); }}
           />
           <span>Tự duyệt sửa file</span>
         </label>
@@ -424,7 +427,7 @@ export function AgentPanel({ connected, workspaceOpen, onToast, onFilesChanged }
         <ContextMeterBar
           context={state.context}
           canRotate={status !== 'running' && status !== 'waiting_approval'}
-          onRotate={() => { void window.studio.agent.rotateNext().then(setState).catch(() => undefined); }}
+          onRotate={() => { void api.rotateNext().then(setState).catch(() => undefined); }}
         />
       )}
       {hasRun && state.plan && state.plan.items.length > 0 && <PlanChecklist plan={state.plan} />}
@@ -444,9 +447,9 @@ export function AgentPanel({ connected, workspaceOpen, onToast, onFilesChanged }
             {previous.interrupted && <div className="agent-warn">Phiên bị gián đoạn khi ứng dụng đóng.{previous.expiredApprovals > 0 ? ` ${previous.expiredApprovals} yêu cầu duyệt đang chờ đã HẾT HẠN và sẽ không tự chạy.` : ''}</div>}
             <div className="agent-resume-note">Gemini cũ không còn dùng được: tiếp tục sẽ mở chat Gemini mới kèm bản tóm tắt tiến độ. Chính sách tự duyệt luôn tắt sau khi mở lại.</div>
             <div className="agent-row">
-              <button className="agent-btn primary" disabled={busy || !connected} title={connected ? '' : 'Cần extension kết nối để gửi tiếp tới Gemini'} onClick={() => run(async () => { await window.studio.agent.resume({ continueRun: true }); setPrevious(null); })}><Play size={14} /> Tiếp tục phiên trước</button>
-              <button className="agent-btn" disabled={busy} onClick={() => run(async () => { await window.studio.agent.resume({ continueRun: false }); setPrevious(null); })}>Chỉ xem lại</button>
-              <button className="agent-btn ghost" disabled={busy} onClick={() => run(async () => { await window.studio.agent.discardPrevious(); setPrevious(null); })}>Bỏ</button>
+              <button className="agent-btn primary" disabled={busy || !connected} title={connected ? '' : 'Cần extension kết nối để gửi tiếp tới Gemini'} onClick={() => run(async () => { await api.resume({ continueRun: true }); setPrevious(null); })}><Play size={14} /> Tiếp tục phiên trước</button>
+              <button className="agent-btn" disabled={busy} onClick={() => run(async () => { await api.resume({ continueRun: false }); setPrevious(null); })}>Chỉ xem lại</button>
+              <button className="agent-btn ghost" disabled={busy} onClick={() => run(async () => { await api.discardPrevious(); setPrevious(null); })}>Bỏ</button>
             </div>
           </div>
         )}
@@ -501,18 +504,18 @@ export function AgentPanel({ connected, workspaceOpen, onToast, onFilesChanged }
             <AttachBar items={state.attachments} disabled={busy} onPick={addFiles} onRemove={removeAttachment} />
             <div className="agent-row">
               <button className="agent-btn primary" disabled={busy || !reply.trim()} onClick={send}>Gửi</button>
-              <button className="agent-btn" disabled={busy} onClick={() => { void window.studio.agent.cancel().then(() => setState(s => ({ ...s, id: null, steps: [], plan: null, attachments: [], status: 'idle' }))); }} title="Bắt đầu lại với mục tiêu mới">Phiên mới</button>
+              <button className="agent-btn" disabled={busy} onClick={() => { void api.cancel().then(() => setState(s => ({ ...s, id: null, steps: [], plan: null, attachments: [], status: 'idle' }))); }} title="Bắt đầu lại với mục tiêu mới">Phiên mới</button>
             </div>
           </>
         )}
         {status === 'error' && (
           <div className="agent-row">
-            <button className="agent-btn primary" disabled={busy} onClick={() => run(() => window.studio.agent.retry())}><RotateCcw size={14} /> Thử lại</button>
-            <button className="agent-btn" disabled={busy} onClick={() => run(() => window.studio.agent.cancel())}>Dừng</button>
+            <button className="agent-btn primary" disabled={busy} onClick={() => run(() => api.retry())}><RotateCcw size={14} /> Thử lại</button>
+            <button className="agent-btn" disabled={busy} onClick={() => run(() => api.cancel())}>Dừng</button>
           </div>
         )}
         {working && (
-          <button className="agent-btn danger" onClick={() => run(() => window.studio.agent.cancel())}><Square size={13} /> Dừng agent</button>
+          <button className="agent-btn danger" onClick={() => run(() => api.cancel())}><Square size={13} /> Dừng agent</button>
         )}
       </div>
 

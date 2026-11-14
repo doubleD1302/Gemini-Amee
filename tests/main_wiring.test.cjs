@@ -54,7 +54,7 @@ const jobUpdates = id => sent.filter(s => s.ch === 'studio:job' && s.payload.id 
 
 test('boots, registers every IPC channel, persists token/port for stable pairing', async () => {
   await boot();
-  for (const ch of ['studio:init', 'studio:choose-folder', 'studio:read-file', 'studio:write-file', 'studio:search', 'studio:prepare', 'studio:send', 'studio:import-reply', 'agent:state', 'agent:start', 'agent:reply', 'agent:retry', 'agent:rotate-next', 'agent:previous', 'agent:open-in-editor', 'agent:resume', 'agent:discard-previous', 'term:list', 'term:start', 'term:read', 'term:send', 'term:stop', 'term:stop-all', 'git:status', 'git:diff', 'git:commit', 'rules:get', 'rules:save', 'rules:save-skill', 'rules:delete-skill', 'rules:trust', 'rules:revoke', 'agent:attach', 'agent:detach', 'agent:cancel', 'agent:approve', 'agent:set-policy', 'agent:job-prompt', 'agent:checkpoints', 'agent:undo']) assert(handlers.has(ch), ch);
+  for (const ch of ['studio:init', 'studio:choose-folder', 'studio:read-file', 'studio:write-file', 'studio:search', 'studio:prepare', 'studio:send', 'studio:import-reply', 'agent:state', 'agent:start', 'agent:reply', 'agent:retry', 'agent:rotate-next', 'agent:previous', 'agent:open-in-editor', 'agent:resume', 'agent:discard-previous', 'term:list', 'term:start', 'term:read', 'term:send', 'term:stop', 'term:stop-all', 'git:status', 'git:diff', 'git:commit', 'rules:get', 'rules:save', 'rules:save-skill', 'rules:delete-skill', 'rules:trust', 'rules:revoke', 'agent:sessions', 'agent:new-session', 'agent:close-session', 'agent:attach', 'agent:detach', 'agent:cancel', 'agent:approve', 'agent:set-policy', 'agent:job-prompt', 'agent:checkpoints', 'agent:undo']) assert(handlers.has(ch), ch);
   assert.match(bridgeInfo.token, /^[0-9a-f]{64}$/);
   const saved = JSON.parse(fs.readFileSync(path.join(userData, 'bridge-state.json'), 'utf8'));
   assert.equal(saved.token, bridgeInfo.token);
@@ -253,4 +253,30 @@ test('terminal over IPC: user-started background process, log reads, input, stop
   for (let i = 0; i < 200 && (await invoke('term:list')).some(x => x.status === 'running'); i++) await sleep(50);
   assert.equal((await invoke('term:list')).some(x => x.status === 'running'), false);
   await sleep(1500);   // Windows: để taskkill nhả thư mục làm việc trước khi test dọn dẹp
+});
+
+test('parallel sessions over IPC: separate runners, sessionId on every state event, at most 3, main cannot be closed, project switch drops the extras', async () => {
+  assert.deepEqual((await invoke('agent:sessions')).map(s => s.id), ['main']);
+  const s2 = await invoke('agent:new-session');
+  assert.equal(s2, 's2');
+  const s3 = await invoke('agent:new-session');
+  assert.equal(s3, 's3');
+  await assert.rejects(async () => invoke('agent:new-session'), /Tối đa 3 phiên/);
+  assert.deepEqual((await invoke('agent:sessions')).map(s => s.id), ['main', 's2', 's3']);
+  // mỗi phiên có trạng thái riêng; sid vắng mặt = phiên chính
+  const before = (await invoke('agent:state')).id;
+  await invoke('agent:attach', 'ghi-chu.txt', Buffer.from('chỉ phiên 2').toString('base64'), 's2');
+  assert.equal((await invoke('agent:state', 's2')).attachments.length, 1);
+  assert.equal((await invoke('agent:state', 'main')).attachments.length, 0);
+  assert.equal((await invoke('agent:state')).id, before);
+  assert(sent.some(s => s.ch === 'studio:agent' && s.payload.sessionId === 's2'), 'state events carry the session id');
+  assert(sent.some(s => s.ch === 'studio:sessions'), 'renderer is told when the session list changes');
+  await assert.rejects(async () => invoke('agent:state', 's7'), /Phiên không tồn tại/);
+  await assert.rejects(async () => invoke('agent:close-session', 'main'), /Không đóng được/);
+  const left = await invoke('agent:close-session', 's3');
+  assert.deepEqual(left.map(s => s.id), ['main', 's2']);
+  await assert.rejects(async () => invoke('agent:state', 's3'), /Phiên không tồn tại/);
+  // đổi project → phiên song song thuộc project cũ bị bỏ
+  await invoke('studio:choose-folder');
+  assert.deepEqual((await invoke('agent:sessions')).map(s => s.id), ['main']);
 });
