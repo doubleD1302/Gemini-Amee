@@ -253,7 +253,7 @@ test('REGRESSION: the extension HUD button is never mistaken for the Gemini send
   // diagnose phải báo "không thấy" thay vì khớp nhầm nút của extension.
   const rep = S.diagnose(doc({ [sel]: [hudBtn] }));
   assert.equal(rep.results.sendButton.ok, false);
-  assert.equal(rep.results.sendButton.tried.find(x => x.selector === sel).matches, 1);
+  assert.equal(rep.results.sendButton.tried.find(x => x.selector === sel).matches, 0, 'own UI is not counted as a match');
 });
 
 test('REGRESSION: Vietnamese stop button "Ngừng tạo câu trả lời" is detected, and it is not offered as the send button', () => {
@@ -296,22 +296,32 @@ test('last-button heuristic skips unlabeled buttons and Vietnamese upload/voice/
   assert.equal(S.findSendButton(doc({}), { composer: el({ closest: { form: onlyBad } }) }), null);
 });
 
-test('response skeleton has structure only (no text), collapses repeats, prefers a response with code', () => {
+test('response skeleton is rooted at message-content, has structure only (no text), collapses repeats, prefers a response with code', () => {
   const secret = 'NOI DUNG TRA LOI BI MAT';
   const code = el({ tag: 'code', attrs: { class: 'code-container formatted' }, kids: [1, 2, 3, 4, 5, 6].map(() => el({ tag: 'span', text: secret })) });
   const pre = el({ tag: 'pre', kids: [code] });
-  const withCode = el({ tag: 'model-response', kids: [el({ tag: 'message-content', attrs: { class: 'markdown' }, text: secret, kids: [el({ tag: 'p', text: secret }), el({ tag: 'code-block', attrs: { 'data-test-id': 'code-content', role: 'group' }, kids: [pre] })] })] });
+  const msg = el({ tag: 'message-content', attrs: { class: 'markdown' }, text: secret, kids: [el({ tag: 'p', text: secret }), el({ tag: 'code-block', attrs: { 'data-test-id': 'code-content', role: 'group' }, kids: [pre] })] });
+  // Bọc ngoài 12 tầng div: khung xương KHÔNG được cụt trước khi tới message-content (lỗi thật ở lượt chạy 3).
+  let wrapped = msg;
+  for (let i = 0; i < 12; i++) wrapped = el({ tag: 'div', attrs: { class: 'wrap' + i }, kids: [wrapped] });
+  const withCode = el({ tag: 'model-response', kids: [wrapped], table: { 'pre, code-block': [pre], 'message-content': [msg] } });
   const plain = el({ tag: 'model-response', kids: [el({ tag: 'message-content', text: secret })] });
-  const sel = S.SELECTORS.response[0];
-  const d = doc({ [sel]: [withCode, plain], ['pre, code-block']: [] });
-  withCode._table = { 'pre, code-block': [pre] };
-  plain._table = {};
-  const lines = S.collectResponseSkeleton(d);
-  const out = lines.join('\n');
+  const d = doc({ [S.SELECTORS.response[0]]: [withCode, plain] });
+  const out = S.collectResponseSkeleton(d).join('\n');
   assert.ok(!out.includes(secret));
-  assert.match(out, /^model-response/);
+  assert.match(out, /^message-content\.markdown/);
   assert.match(out, /code-block#code-content\[role=group\]/);
   assert.match(out, /pre\n\s+code\.code-container\.formatted/);
   assert.match(out, /…×4 span nữa/);
   assert.deepEqual(S.collectResponseSkeleton(doc({})), []);
+});
+
+test('diagnose does not count the extension\'s own UI in per-candidate matches', () => {
+  const hud = el();
+  const own = el({ tag: 'button', attrs: { title: 'Gửi câu trả lời' }, closest: { '#gps-bridge-hud': hud } });
+  const sel = 'button[title*="Gửi" i]';
+  const rep = S.diagnose(doc({ [sel]: [own] }));
+  const row = rep.results.sendButton.tried.find(x => x.selector === sel);
+  assert.equal(row.matches, 0);
+  assert.equal(row.visible, 0);
 });

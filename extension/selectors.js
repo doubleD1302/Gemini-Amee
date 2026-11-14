@@ -231,7 +231,8 @@
 
   function tryAll(scope, candidates, isVisible) {
     return candidates.map(selector => {
-      const { list, error } = safeAll(scope, selector);
+      const { list: raw, error } = safeAll(scope, selector);
+      const list = raw.filter(e => !isOwnUi(e)); // không đếm UI của chính extension
       return { selector, matches: list.length, visible: list.filter(isVisible).length, error };
     });
   }
@@ -320,7 +321,7 @@
    */
   function skeletonOf(root) {
     const lines = [];
-    const MAX_LINES = 160, MAX_DEPTH = 10;
+    const MAX_LINES = 220, MAX_DEPTH = 14;
     const kidsOf = n => (n && n.children ? Array.from(n.children) : []);
     function desc(n) {
       const g = a => (n.getAttribute && n.getAttribute(a)) || '';
@@ -355,7 +356,10 @@
     const resp = findResponses(doc).els;
     if (!resp.length) return [];
     const withCode = resp.slice().reverse().find(r => safeAll(r, 'pre, code-block').list.length > 0);
-    return skeletonOf(withCode || resp[resp.length - 1]);
+    // Gốc là message-content (phần md.js đọc), không phải model-response: bọc ngoài quá sâu (>10 tầng) và không liên quan.
+    const target = withCode || resp[resp.length - 1];
+    const content = findResponseContent(target);
+    return skeletonOf(content ? content.el : target);
   }
 
   /**

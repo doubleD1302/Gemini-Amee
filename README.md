@@ -2,7 +2,7 @@
 
 A **separate Electron + React coding assistant** for your own projects, using **Gemini Web** in normal Chrome via an opt-in extension. It does **not** call the Gemini API, use Google login cookies, bypass account limits, or require an API key.
 
-> **Trạng thái (0.2.0):** Đã có **chế độ Agent** kiểu Antigravity chạy qua Gemini Web (vòng lặp đọc → sửa → chạy lệnh, có duyệt từng bước, hoàn tác). Logic lõi được test bằng Node (111 test, dùng Gemini giả). **Chưa kiểm chứng trên giao diện Gemini thật và cửa sổ Electron thật** — bộ chọn DOM của Gemini có thể phải chỉnh. Luôn có đường dự phòng copy/paste thủ công.
+> **Trạng thái (0.2.0):** Đã có **chế độ Agent** kiểu Antigravity chạy qua Gemini Web (vòng lặp đọc → sửa → chạy lệnh, có duyệt từng bước, hoàn tác). Logic lõi được test bằng Node (112 test, dùng Gemini giả). **Chưa kiểm chứng trên giao diện Gemini thật và cửa sổ Electron thật** — bộ chọn DOM của Gemini có thể phải chỉnh. Luôn có đường dự phòng copy/paste thủ công.
 
 ## Chế độ Agent (mới)
 
@@ -72,7 +72,7 @@ Gemini Web does not provide a public, stable browser-agent API. The extension lo
 ## Development and tests
 
 ```powershell
-npm run test       # 111 test Node: workspace, bridge, giao thức/công cụ agent, vòng lặp e2e với Gemini giả, md.js, lịch sử
+npm run test       # 112 test Node: workspace, bridge, giao thức/công cụ agent, vòng lặp e2e với Gemini giả, md.js, lịch sử
 npm run typecheck  # TypeScript checks after npm install
 npm run build      # production Vite renderer
 npm run start      # launch Electron with dist/ after building
